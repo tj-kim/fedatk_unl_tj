@@ -4,9 +4,8 @@ logs/
 chkpts/
 data/
 weights/
-adv_data/
 
-# Don't track files with these extensioons
+# Don't track files with these extensions
 *.pkl
 *.npy
 *.pth
