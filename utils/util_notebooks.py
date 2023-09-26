@@ -1,8 +1,14 @@
 # Generating Empty Aggregator to be loaded 
 from transfer_attacks.Args import *
 from transfer_attacks.TA_utils import dummy_aggregator
+from transfer_attacks.Custom_Dataloader import *
+from transfer_attacks.Transferer import *
+from transfer_attacks.Params import *
+
+
 import numpy as np
 import copy
+import torch
 
 # setting = 'FedAvg'
 
@@ -134,3 +140,103 @@ def import_model_weights(num_models, setting, save_path, aggregator, args_):
             models_test += [new_model]
 
     return models_test
+
+def get_aggregate_dataloader(clients):
+    # Compiling Dataset from Clients
+    # Combine Validation Data across all clients as test
+    data_x = []
+    data_y = []
+
+    for i in range(len(clients)):
+        daniloader = clients[i].test_iterator
+        for (x,y,idx) in daniloader.dataset:
+            data_x.append(x)
+            data_y.append(y)
+
+    data_x = torch.stack(data_x)
+    try:
+        data_y = torch.stack(data_y)        
+    except:
+        data_y = torch.FloatTensor(data_y) 
+        
+    return Custom_Dataloader(data_x, data_y)
+    
+def generate_logs_adv(num_models):
+
+    # Here we will make a dictionary that will hold results
+    logs_adv = []
+
+    for i in range(num_models):
+        adv_dict = {}
+        adv_dict['orig_acc_transfers'] = None
+        adv_dict['orig_similarities'] = None
+        adv_dict['adv_acc_transfers'] = None
+        adv_dict['adv_similarities_target'] = None
+        adv_dict['adv_similarities_untarget'] = None
+        adv_dict['adv_target'] = None
+        adv_dict['adv_miss'] = None
+        adv_dict['metric_alignment'] = None
+        adv_dict['ib_distance_legit'] = None
+        adv_dict['ib_distance_adv'] = None
+
+        logs_adv += [adv_dict]
+
+    return logs_adv
+
+def get_metric_list(metric_name, logs_adv, victim_idxs):
+
+    metrics = ['orig_acc_transfers', 'orig_similarities', 'adv_acc_transfers', 'adv_similarities_target',
+               'adv_similarities_untarget', 'adv_target', 'adv_miss']
+
+    if metric_name not in metrics:
+        raise ValueError(f"Invalid metric name. Choose from: {', '.join(metrics)}")
+
+    metric_idx = metrics.index(metric_name)
+
+    metric_list = np.zeros([len(victim_idxs), len(victim_idxs)])
+
+    for adv_idx in range(len(victim_idxs)):
+        for victim in range(len(victim_idxs)):
+            metric_list[adv_idx, victim] = logs_adv[victim_idxs[adv_idx]][metrics[metric_idx]][victim_idxs[victim]].data.tolist()
+
+    return metric_list
+
+def cross_attack(logs_adv, victim_idxs, dataloader, models_test, custom_batch_size = 500, eps = 4.5):
+
+    for adv_idx in victim_idxs:
+        print("\t Adv idx:", adv_idx)
+                
+        batch_size = min(custom_batch_size, dataloader.y_data.shape[0])
+        
+        t1 = Transferer(models_list=models_test, dataloader=dataloader)
+        t1.generate_victims(victim_idxs)
+        
+        # Perform Attacks Targeted
+        t1.atk_params = PGD_Params()
+        t1.atk_params.set_params(batch_size=batch_size, iteration = 10,
+                    target = 3, x_val_min = torch.min(dataloader.x_data), 
+                    x_val_max = torch.max(dataloader.x_data),
+                    step_size = 0.01, step_norm = "inf", eps = eps, eps_norm = 2)
+        
+        
+        
+        t1.generate_advNN(adv_idx)
+        t1.generate_xadv(atk_type = "pgd")
+        t1.send_to_victims(victim_idxs)
+
+        # Log Performance
+        logs_adv[adv_idx]['orig_acc_transfers'] = copy.deepcopy(t1.orig_acc_transfers)
+        logs_adv[adv_idx]['orig_similarities'] = copy.deepcopy(t1.orig_similarities)
+        logs_adv[adv_idx]['adv_acc_transfers'] = copy.deepcopy(t1.adv_acc_transfers)
+        logs_adv[adv_idx]['adv_similarities_target'] = copy.deepcopy(t1.adv_similarities)        
+        logs_adv[adv_idx]['adv_target'] = copy.deepcopy(t1.adv_target_hit)
+
+        # Miss attack Untargeted
+        t1.atk_params.set_params(batch_size=batch_size, iteration = 10,
+                    target = -1, x_val_min = torch.min(dataloader.x_data), 
+                    x_val_max = torch.max(dataloader.x_data),
+                    step_size = 0.01, step_norm = "inf", eps = eps, eps_norm = 2)
+        t1.generate_xadv(atk_type = "pgd")
+        t1.send_to_victims(victim_idxs)
+        logs_adv[adv_idx]['adv_miss'] = copy.deepcopy(t1.adv_acc_transfers)
+        logs_adv[adv_idx]['adv_similarities_untarget'] = copy.deepcopy(t1.adv_similarities)

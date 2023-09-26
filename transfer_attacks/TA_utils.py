@@ -382,9 +382,9 @@ def load_client_data(clients, c_id, mode = 'test'):
     data_x = []
     data_y = []
 
-    if mode == 'all': # load all validation sets together
+    if mode == 'all': # load all test sets together
         for i in range(len(clients)):
-            daniloader = clients[i].val_iterator
+            daniloader = clients[i].test_iterator
             for (x,y,idx) in daniloader.dataset:
                 data_x.append(x)
                 data_y.append(y)

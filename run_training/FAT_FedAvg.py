@@ -47,12 +47,12 @@ if __name__ == "__main__":
     
     os.chdir(parent_dir) # As we are in a folder
 
-    exp_names = ['fedavg','FAT']
-    exp_method = ['FedAvg_adv','FedAvg_adv']
+    exp_names = ['FAT']#['fedavg','FAT']
+    exp_method = ['FedAvg_adv'] #['FedAvg_adv','FedAvg_adv']
     save_folder = 'weights/cifar10/230922_baseline_train/'
 
-    exp_num_learners = [1,1]
-    exp_lr = [0.01, 0.01]
+    exp_num_learners = [1]
+    exp_lr = [0.01]
     
         
     for itt in range(len(exp_names)):
@@ -94,7 +94,7 @@ if __name__ == "__main__":
         S = 0.05 # Threshold
         step_size = 0.01
         K = 10
-        eps = 0.1
+        eps = 4.5
 
         # Randomized Parameters
         # Ru = np.random.uniform(0, 0.5, size=num_clients)
@@ -109,7 +109,7 @@ if __name__ == "__main__":
         atk_params = PGD_Params()
         atk_params.set_params(batch_size=1, iteration = K,
                            target = -1, x_val_min = x_min, x_val_max = x_max,
-                           step_size = 0.05, step_norm = "inf", eps = eps, eps_norm = "inf")
+                           step_size = 0.05, step_norm = "inf", eps = eps, eps_norm = 2)
 
         # Obtain the central controller decision making variables (static)
         num_h = args_.n_learners= 3
@@ -142,12 +142,12 @@ if __name__ == "__main__":
                 Whu = Whu / row_sums[:, np.newaxis]
                 Wh = np.sum(Whu,axis=0)/num_clients
 
-                if exp_names == 'FAT':
+                if exp_names[itt] == 'FAT':
                     # Solve for adversarial ratio at every client
-                    Fu = solve_proportions(G, num_clients, num_h, Du, Whu, S, Ru, step_size)
+                    # Fu = solve_proportions(G, num_clients, num_h, Du, Whu, S, Ru, step_size)
+                    Fu = np.ones(num_clients) * G
 
                     # Assign proportion and attack params
-                    # Assign proportion and compute new dataset
                     for i in range(len(clients)):
                         aggregator.clients[i].set_adv_params(Fu[i], atk_params)
                         aggregator.clients[i].update_advnn()
