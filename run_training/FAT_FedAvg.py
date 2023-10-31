@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     exp_names = ['FAT']#['fedavg','FAT']
     exp_method = ['FedAvg_adv'] #['FedAvg_adv','FedAvg_adv']
-    save_folder = 'weights/cifar10/230922_baseline_train/'
+    save_folder = 'weights/cifar10/231031_FAT150round/'
 
     exp_num_learners = [1]
     exp_lr = [0.01]
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         args_.input_dimension = None
         args_.output_dimension = None
         args_.n_learners= exp_num_learners[itt]
-        args_.n_rounds = 201
+        args_.n_rounds = 150
         args_.bz = 128
         args_.local_steps = 1
         args_.lr_lambda = 0
