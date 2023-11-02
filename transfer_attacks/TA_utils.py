@@ -19,6 +19,9 @@ from torch.utils.tensorboard import SummaryWriter
 from run_experiment import *
 from models import *
 
+from sklearn.metrics.pairwise import cosine_similarity
+
+
 
 class One_Hot(nn.Module):
     # from :
@@ -428,3 +431,9 @@ def update_aggregator_dataset(aggregator, data_prop):
 #             aggregator.clients[c_id].train_iterator.dataset = dataset
 
     return
+
+
+def matrix_cosine_similarity(mat1, mat2):
+    vec1 = mat1.cpu().numpy().flatten()
+    vec2 = mat2.cpu().numpy().flatten()
+    return cosine_similarity([vec1], [vec2])[0][0]
