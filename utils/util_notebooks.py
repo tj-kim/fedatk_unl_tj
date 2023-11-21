@@ -42,7 +42,7 @@ def set_args(setting, num_user):
     args_.q = 1
     args_.locally_tune_clients = False
     args_.seed = 1234
-    args_.verbose = 1
+    args_.verbose = 0
     args_.save_path = 'weights/cifar/dummy/'
     args_.validation = False
 
@@ -140,6 +140,7 @@ def import_model_weights(num_models, setting, save_path, aggregator, args_):
             models_test += [new_model]
 
     return models_test
+    
 
 def get_aggregate_dataloader(clients):
     # Compiling Dataset from Clients
