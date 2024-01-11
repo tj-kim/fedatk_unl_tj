@@ -494,6 +494,49 @@ class CentralizedAggregator(Aggregator):
      All clients get fully synchronized with the average client.
 
     """
+
+    def __init__(
+        self,
+        clients,
+        global_learners_ensemble,
+        log_freq,
+        global_train_logger,
+        global_test_logger,
+        sampling_rate=1,
+        sample_with_replacement=False,
+        test_clients=None,
+        verbose=0,
+        seed=None,
+        aggregation_op=None,
+        *args,
+        **kwargs,
+    ):
+        super(CentralizedAggregator, self).__init__(
+            clients,
+            global_learners_ensemble,
+            log_freq,
+            global_train_logger,
+            global_test_logger,
+            sampling_rate,
+            sample_with_replacement,
+            test_clients,
+            verbose,
+            seed,
+            *args,
+            **kwargs,
+        )
+        self.aggregation_op = aggregation_op
+        self.acc_log_dict = {}
+        self.acc_log_dict["rounds"] = []
+        self.acc_log_dict["train_acc"] = []
+        self.acc_log_dict["test_acc"] = []
+        self.acc_log_dict["train_loss"] = []
+        self.acc_log_dict["test_loss"] = []
+
+        self.dump_path = kwargs.get("dump_path", None)
+        if self.dump_path is not None:
+            os.makedirs(self.dump_path, exist_ok=True)
+
     def mix(self):
         self.sample_clients()
 
