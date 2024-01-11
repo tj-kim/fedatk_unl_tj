@@ -490,8 +490,8 @@ class NoCommunicationAggregator(Aggregator):
                 client.learners_ensemble.learners_weights = weights[client_id]
 
 class CentralizedAggregator(Aggregator):
-    r""" Standard Centralized Aggregator.
-     All clients get fully synchronized with the average client.
+    r"""Standard Centralized Aggregator.
+    All clients get fully synchronized with the average client.
 
     """
 
@@ -537,51 +537,84 @@ class CentralizedAggregator(Aggregator):
         if self.dump_path is not None:
             os.makedirs(self.dump_path, exist_ok=True)
 
-    def mix(self):
+    def mix(self, replace=False, dump_flag=False):
         self.sample_clients()
+
+        if replace:
+            for i, client in enumerate(self.sampled_clients):
+                if id(client) == id(
+                    self.clients[0]
+                ):  # move the attack to the last - this may not be the case in real worl
+                    print("Add attacker to the end")
+                    self.sampled_clients.pop(i)
+                    break
+
+            self.sampled_clients.append(self.clients[0])
 
         for client in self.sampled_clients:
             client.step()
 
-            
-        if self.krum_mode:
-        # Krum based aggregation scheme applied 
-            for learner_id, learner in enumerate(self.global_learners_ensemble):
-                learners = [client.learners_ensemble[learner_id] for client in self.clients]
-                krum_learners(learners, learner, self.exp_adv_nodes)
-        else:
-            for learner_id, learner in enumerate(self.global_learners_ensemble):
-                learners = [client.learners_ensemble[learner_id] for client in self.clients]
+        # self.record_client_updates()
+        # self.client_dist_to_prev_gt_in_each_round.append(
+        #     self.all_clients_dist_to_global()
+        # )
+
+ 
+        for learner_id, learner in enumerate(self.global_learners_ensemble):
+            learners = [client.learners_ensemble[learner_id] for client in self.clients]
+            if self.aggregation_op is None:
                 average_learners(learners, learner, weights=self.clients_weights)
+            elif self.aggregation_op == 'median':
+                dump_path = (
+                    os.path.join(self.dump_path, f"round{self.c_round}_median.pkl") 
+                    if dump_flag
+                    else None
+                )
+                byzantine_robust_aggregate_median(
+                    learners, 
+                    learner, 
+                    dump_path=dump_path
+                )
+            elif self.aggregation_op == 'trimmed_mean':
+                dump_path = (
+                    os.path.join(self.dump_path, f"round{self.c_round}_tm.pkl")
+                    if dump_flag
+                    else None
+                )
+                byzantine_robust_aggregate_tm(
+                    learners, 
+                    learner, 
+                    beta=0.05, 
+                    dump_path=dump_path
+                )
+            elif self.aggregation_op == 'krum':
+                dump_path = (
+                    os.path.join(self.dump_path, f"round{self.c_round}_krum.pkl")
+                    if dump_flag
+                    else None
+                )
+                byzantine_robust_aggregate_krum(
+                    learners, 
+                    learner, 
+                    dump_path=dump_path
+                )
+            elif self.aggregation_op == 'krum_modelwise':
+                dump_path = (
+                    os.path.join(self.dump_path, f"round{self.c_round}_krum_modelwise.pkl")
+                    if dump_flag
+                    else None
+                )
+                byzantine_robust_aggregate_krum_modelwise(
+                    1,
+                    learners,
+                    learner,
+                    dump_path=dump_path
+                )
+            else:
+                raise NotImplementedError
+
 
         # assign the updated model to all clients
-        self.update_clients()
-
-        self.c_round += 1
-
-        if self.c_round % self.log_freq == 0:
-            self.write_logs()
-            
-    def mix_partial(self, participant_id):
-        self.sample_clients()
-        client_list = []
-        temp_weights = torch.tensor([])
-
-        for i in participant_id:
-            self.clients[i].step()
-            client_list += [self.clients[i]]
-            temp_weights = torch.cat((temp_weights, self.clients_weights[i].unsqueeze(0)))
-
-        # Calculate new client weights
-        weights = temp_weights / temp_weights.sum()
-#         pdb.set_trace()
-
-        for learner_id, learner in enumerate(self.global_learners_ensemble):
-            learners = [client.learners_ensemble[learner_id] for client in client_list]
-#             average_learners(learners, learner, weights=weights)
-            average_learners_split(learners, learner, weights=weights, num_skip = 6)
-
-        # Assign the updated model to all clients
         self.update_clients()
 
         self.c_round += 1
@@ -592,12 +625,56 @@ class CentralizedAggregator(Aggregator):
     def update_clients(self):
         for client in self.clients:
             for learner_id, learner in enumerate(client.learners_ensemble):
-                copy_model(learner.model, self.global_learners_ensemble[learner_id].model)
+                copy_model(
+                    learner.model, self.global_learners_ensemble[learner_id].model
+                )
 
                 if callable(getattr(learner.optimizer, "set_initial_params", None)):
                     learner.optimizer.set_initial_params(
                         self.global_learners_ensemble[learner_id].model.parameters()
                     )
+
+    def all_clients_dist_to_global(self):
+        prev_global_ensemble = self.global_learners_ensemble
+        all_dist_float = []
+        all_dist_nonfloat = []
+
+        for client in self.clients:
+            norm = []
+            abs_norm = []
+            for learner_id, learner in enumerate(client.learners_ensemble):
+                GT_state = prev_global_ensemble[learner_id].model.state_dict(
+                    keep_vars=True
+                )
+                learner_state = learner.model.state_dict(keep_vars=True)
+
+                for key in GT_state:
+                    if GT_state[key].data.dtype == torch.float32:
+                        norm_res = torch.norm(
+                            GT_state[key].data.clone() - learner_state[key].data.clone()
+                        )
+                        norm.append(norm_res.item())
+                    else:
+                        norm_res = torch.abs(
+                            GT_state[key].data.clone() - learner_state[key].data.clone()
+                        )
+                        abs_norm.append(norm_res.item())
+
+            all_dist_float.append(sum(norm))
+            all_dist_nonfloat.append(sum(abs_norm))
+
+        return np.array(all_dist_float), np.array(all_dist_nonfloat)
+
+    def change_all_clients_status(self, client_indices, status):
+        print(
+            f"all clients' sample \n{[client.n_train_samples for client in self.clients]}"
+        )
+        for client_idx in client_indices:
+            client = self.clients[client_idx]
+            client.change_status(status)
+            print(
+                f"client {client_idx} with sample num {client.n_train_samples} stop learning = {status}"
+            )
 
 
 class PersonalizedAggregator(CentralizedAggregator):
