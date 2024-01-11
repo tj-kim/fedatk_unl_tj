@@ -43,9 +43,9 @@ if __name__ == "__main__":
     
     os.chdir(parent_dir) # As we are in a folder
 
-    exp_names = ['fedavg_tm','FAT_tm','fedavg_md','FAT_md','fedavg','FAT']
-    exp_method = ['FedAvg','FedAvg_adv','FedAvg','FedAvg_adv','FedAvg','FedAvg_adv']
-    agg_ops = ['trimmed_mean','trimmed_mean','median','median',None, None]
+    exp_names = ['FAT_tm','fedavg_md','FAT_md','fedavg','FAT']
+    exp_method = ['FedAvg_adv','FedAvg','FedAvg_adv','FedAvg','FedAvg_adv']
+    agg_ops = ['trimmed_mean','median','median',None, None]
     save_folder = 'weights/cifar10/240111_robust_tests/'
 
     exp_num_learners = 1
