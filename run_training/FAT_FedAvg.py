@@ -47,9 +47,9 @@ if __name__ == "__main__":
     
     os.chdir(parent_dir) # As we are in a folder
 
-    exp_names = ['FAT']#['fedavg','FAT']
-    exp_method = ['FedAvg_adv'] #['FedAvg_adv','FedAvg_adv']
-    save_folder = 'weights/cifar10/231031_FAT150round/'
+    exp_names = ['FedAvg']#['fedavg','FAT']
+    exp_method = ['FedAvg'] #['FedAvg_adv','FedAvg_adv']
+    save_folder = 'weights/cifar10/240117_FedAvg150round/'
 
     exp_num_learners = [1]
     exp_lr = [0.01]
@@ -104,12 +104,13 @@ if __name__ == "__main__":
         aggregator, clients = dummy_aggregator(args_, num_clients)
 
         # Set attack parameters
-        x_min = torch.min(clients[0].adv_nn.dataloader.x_data)
-        x_max = torch.max(clients[0].adv_nn.dataloader.x_data)
-        atk_params = PGD_Params()
-        atk_params.set_params(batch_size=1, iteration = K,
-                           target = -1, x_val_min = x_min, x_val_max = x_max,
-                           step_size = 0.05, step_norm = "inf", eps = eps, eps_norm = 2)
+        if exp_method[itt] == 'FedAvg_adv':
+            x_min = torch.min(clients[0].adv_nn.dataloader.x_data)
+            x_max = torch.max(clients[0].adv_nn.dataloader.x_data)
+            atk_params = PGD_Params()
+            atk_params.set_params(batch_size=1, iteration = K,
+                            target = -1, x_val_min = x_min, x_val_max = x_max,
+                            step_size = 0.05, step_norm = "inf", eps = eps, eps_norm = 2)
 
         # Obtain the central controller decision making variables (static)
         num_h = args_.n_learners= 3
@@ -127,22 +128,22 @@ if __name__ == "__main__":
         current_round = 0
         while current_round <= args_.n_rounds:
 
-            # If statement catching every Q rounds -- update dataset
-            if  current_round != 0 and current_round%Q == 0: # 
-                # print("Round:", current_round, "Calculation Adv")
-                # Obtaining hypothesis information
-                Whu = np.zeros([num_clients,num_h]) # Hypothesis weight for each user
-                for i in range(len(clients)):
-                    # print("client", i)
-                    temp_client = aggregator.clients[i]
-                    hyp_weights = temp_client.learners_ensemble.learners_weights
-                    Whu[i] = hyp_weights
+            if exp_method[itt] == 'FedAvg_adv':
+                # If statement catching every Q rounds -- update dataset
+                if  current_round != 0 and current_round%Q == 0: # 
+                    # print("Round:", current_round, "Calculation Adv")
+                    # Obtaining hypothesis information
+                    Whu = np.zeros([num_clients,num_h]) # Hypothesis weight for each user
+                    for i in range(len(clients)):
+                        # print("client", i)
+                        temp_client = aggregator.clients[i]
+                        hyp_weights = temp_client.learners_ensemble.learners_weights
+                        Whu[i] = hyp_weights
 
-                row_sums = Whu.sum(axis=1)
-                Whu = Whu / row_sums[:, np.newaxis]
-                Wh = np.sum(Whu,axis=0)/num_clients
+                    row_sums = Whu.sum(axis=1)
+                    Whu = Whu / row_sums[:, np.newaxis]
+                    Wh = np.sum(Whu,axis=0)/num_clients
 
-                if exp_names[itt] == 'FAT':
                     # Solve for adversarial ratio at every client
                     # Fu = solve_proportions(G, num_clients, num_h, Du, Whu, S, Ru, step_size)
                     Fu = np.ones(num_clients) * G

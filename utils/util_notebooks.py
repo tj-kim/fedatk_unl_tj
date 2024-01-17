@@ -1,6 +1,6 @@
 # Generating Empty Aggregator to be loaded 
 from transfer_attacks.Args import *
-from transfer_attacks.TA_utils import dummy_aggregator
+from transfer_attacks.TA_utils import dummy_aggregator, load_client_data
 from transfer_attacks.Custom_Dataloader import *
 from transfer_attacks.Transferer import *
 from transfer_attacks.Params import *
@@ -32,7 +32,7 @@ def set_args(setting, num_user):
     args_.bz = 128
     args_.local_steps = 1
     args_.lr_lambda = 0
-    args_.lr =0.03
+    args_.lr =0.01
     args_.lr_scheduler = 'multi_step'
     args_.log_freq = 10
     args_.device = 'cuda'
@@ -59,7 +59,7 @@ def import_model_weights(num_models, setting, save_path, aggregator, args_):
     weights = np.load(weight_path)
 
 
-    if setting == 'local':
+    if setting == 'local' or setting == 'local_adv':
         
         aggregator.load_state(args_.save_path)
         model_weights = []
@@ -75,7 +75,7 @@ def import_model_weights(num_models, setting, save_path, aggregator, args_):
             new_model.eval()
             models_test += [new_model]
 
-    elif setting == 'FedAvg':
+    elif setting == 'FedAvg' or setting == 'FedAvg_adv':
         
         aggregator.load_state(args_.save_path)
         
@@ -107,7 +107,7 @@ def import_model_weights(num_models, setting, save_path, aggregator, args_):
             new_model.load_state_dict(new_weight_dict)
             models_test += [new_model]
 
-    elif setting == 'FedEM':
+    elif setting == 'FedEM' or setting == 'FedEM_adv':
         
         aggregator.load_state(args_.save_path)
         
@@ -241,3 +241,84 @@ def cross_attack(logs_adv, victim_idxs, dataloader, models_test, custom_batch_si
         t1.send_to_victims(victim_idxs)
         logs_adv[adv_idx]['adv_miss'] = copy.deepcopy(t1.adv_acc_transfers)
         logs_adv[adv_idx]['adv_similarities_untarget'] = copy.deepcopy(t1.adv_similarities)
+
+
+### Below is for cosine similarity experiments
+### Where gradual transition/catastrophic forgetting is performed
+from sklearn.metrics.pairwise import cosine_similarity
+
+def matrix_cosine_similarity(mat1, mat2):
+    vec1 = mat1.cpu().numpy().flatten()
+    vec2 = mat2.cpu().numpy().flatten()
+    return cosine_similarity([vec1], [vec2])[0][0]
+
+def get_diff_NN( model1, model2, desired_keys):
+
+    param_model1 = model1.state_dict()
+    param_model2 = model2.state_dict()
+
+    mag_norm_122 = []
+    for key in desired_keys: #params_FAT:
+
+        diff = param_model1[key] - param_model2[key]
+        l2_norm = torch.norm(diff, p=2)
+
+        mag_norm_122 += [diff/torch.norm(diff,p=2)]
+    return mag_norm_122
+
+def diff_cosine_similarity(diff, baseline, key_length):
+    values_stored = np.zeros(key_length)
+
+    for i in range(key_length):
+        values_stored[i] = matrix_cosine_similarity(diff[i], baseline[i])
+
+    return values_stored 
+
+def get_adv_acc(aggregator, model, batch_size = 500):
+    num_clients = len(aggregator.clients)
+
+    # Dataloader for datax
+    data_x = []
+    daniloader = aggregator.clients[0].val_iterator
+    for (x,y,idx) in daniloader.dataset:
+        data_x.append(x)
+
+    data_x = torch.stack(data_x)
+    victim_idxs = range(num_clients)
+
+    # Save matrix
+    test_acc_save = np.zeros([1])
+    adv_acc_save = np.zeros([1])
+
+    for c_id in range(1):
+        dataloader = load_client_data(clients = aggregator.clients, c_id = c_id, mode = 'test')
+        batch_size = min(batch_size, dataloader.y_data.shape[0])
+
+        t1 = Transferer(models_list = [model] * num_clients, dataloader=dataloader)
+        t1.generate_victims(victim_idxs)
+        t1.atk_params = PGD_Params()
+        t1.atk_params.set_params(batch_size=batch_size, iteration = 10, target = -1,
+                                x_val_min = torch.min(data_x), x_val_max = torch.max(data_x),
+                                step_size = 0.05, step_norm = "inf", eps = 4, eps_norm = 2)
+        t1.generate_advNN(c_id)
+        t1.generate_xadv(atk_type="pgd")
+        t1.send_to_victims(victim_idxs)
+        test_acc_save[c_id] = t1.orig_acc_transfers[0]
+        adv_acc_save[c_id] = t1.adv_acc_transfers[0]
+
+    return test_acc_save, adv_acc_save
+
+def pull_model_from_agg(aggregator):
+        
+    # This is where the models are stored -- one for each mixture --> learner.model for nn
+    hypotheses = aggregator.global_learners_ensemble.learners
+
+    # obtain the state dict for each of the weights 
+    weights_h = []
+
+    for h in hypotheses:
+        weights_h += [h.model.state_dict()]
+    
+    # first make the model with empty weights
+    new_model = copy.deepcopy(hypotheses[0].model)
+    return new_model
