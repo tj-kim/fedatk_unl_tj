@@ -537,6 +537,9 @@ class CentralizedAggregator(Aggregator):
         if self.dump_path is not None:
             os.makedirs(self.dump_path, exist_ok=True)
 
+        # Bad code -- hard wiring trimmed mean rate
+        self.tm_rate = 0.05
+
     def mix(self, replace=False, dump_flag=False):
         self.sample_clients()
 
@@ -584,7 +587,7 @@ class CentralizedAggregator(Aggregator):
                 byzantine_robust_aggregate_tm(
                     learners, 
                     learner, 
-                    beta=0.05, 
+                    beta=self.tm_rate, 
                     dump_path=dump_path
                 )
             elif self.aggregation_op == 'krum':
