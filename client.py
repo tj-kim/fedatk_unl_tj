@@ -641,8 +641,9 @@ class Adv_Client(Client):
         
                 self.train_iterator.dataset.targets[idx] = y_amax
             
+            else:
+                self.train_iterator.dataset.targets[idx] = y_val
             self.train_iterator.dataset.data[idx] = x_val_unnorm
-            self.train_iterator.dataset.targets[idx] = y_val
             
         self.unl_record += [y_record]
         self.train_loader = iter(self.train_iterator)
