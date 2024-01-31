@@ -274,8 +274,31 @@ def diff_cosine_similarity(diff, baseline, key_length):
 
     return values_stored 
 
+def initialize_logsadv(num_models):
+
+    # Here we will make a dictionary that will hold results
+    logs_adv = []
+
+    for i in range(num_models):
+        adv_dict = {}
+        adv_dict['orig_acc_transfers'] = None
+        adv_dict['orig_similarities'] = None
+        adv_dict['adv_acc_transfers'] = None
+        adv_dict['adv_similarities_target'] = None
+        adv_dict['adv_similarities_untarget'] = None
+        adv_dict['adv_target'] = None
+        adv_dict['adv_miss'] = None
+        adv_dict['metric_alignment'] = None
+        adv_dict['ib_distance_legit'] = None
+        adv_dict['ib_distance_adv'] = None
+
+        logs_adv += [adv_dict]
+    return logs_adv
+
 def get_adv_acc(aggregator, model, batch_size = 500):
     num_clients = len(aggregator.clients)
+
+    # logs_adv = generate_logs_adv(num_models=num_clients)
 
     # Dataloader for datax
     data_x = []
@@ -284,13 +307,14 @@ def get_adv_acc(aggregator, model, batch_size = 500):
         data_x.append(x)
 
     data_x = torch.stack(data_x)
-    victim_idxs = range(num_clients)
+    # victim_idxs = range(num_clients)
 
     # Save matrix
-    test_acc_save = np.zeros([1])
-    adv_acc_save = np.zeros([1])
+    test_acc_save = np.zeros([num_clients])
+    adv_acc_save = np.zeros([num_clients])
 
-    for c_id in range(1):
+    for c_id in range(num_clients):
+        victim_idxs = range(1) # just test against one client
         dataloader = load_client_data(clients = aggregator.clients, c_id = c_id, mode = 'test')
         batch_size = min(batch_size, dataloader.y_data.shape[0])
 
@@ -306,7 +330,7 @@ def get_adv_acc(aggregator, model, batch_size = 500):
         test_acc_save[c_id] = t1.orig_acc_transfers[0]
         adv_acc_save[c_id] = t1.adv_acc_transfers[0]
 
-    return test_acc_save, adv_acc_save
+    return test_acc_save, adv_acc_save 
 
 def pull_model_from_agg(aggregator):
         
