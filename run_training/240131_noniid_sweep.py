@@ -47,20 +47,20 @@ if __name__ == "__main__":
     
     os.chdir(parent_dir) # As we are in a folder
 
-    exp_names = ['tm_iid', 'tm_niid', 'med_iid', 'med_niid']
-    iid_mode = [True, False, True, False]
-    agg_op_list = ["trimmed_mean", "trimmed_mean", "median", "median"]
-    exp_method = ['FedAvg_adv','FedAvg_adv','FedAvg_adv','FedAvg_adv']
+    exp_names = ['tm_niid', 'med_iid', 'med_niid'] # ['tm_iid', 'tm_niid', 'med_iid', 'med_niid']
+    iid_mode = [False, True, False]# [True, False, True, False]
+    agg_op_list = ["trimmed_mean", "median", "median"] #  ["trimmed_mean", "trimmed_mean", "median", "median"]
+    exp_method = ['FedAvg_adv','FedAvg_adv','FedAvg_adv']# ['FedAvg_adv','FedAvg_adv','FedAvg_adv','FedAvg_adv']
     save_folder = 'weights/cifar10/240131_niid_test/'
     agg_tm_rate = 0.1
 
     exp_num_learners = [1]
-    exp_lr = [0.01]
+    exp_lr = 0.01
     
         
     for itt in range(len(exp_names)):
         
-        print("running trial:", itt)
+        print("running trial:", itt, "of", len(exp_names), ":", exp_names[itt])
         
         # Manually set argument parameters
         args_ = Args()
@@ -75,7 +75,7 @@ if __name__ == "__main__":
         args_.bz = 128
         args_.local_steps = 1
         args_.lr_lambda = 0
-        args_.lr = exp_lr[itt]
+        args_.lr = exp_lr
         args_.lr_scheduler = 'multi_step'
         args_.log_freq = 10
         args_.device = 'cuda'
@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
         # Other Argument Parameters
         Q = 10 # update per round
-        G = 1
+        G = 0.5
         num_clients = 40
         S = 0.05 # Threshold
         step_size = 0.01
@@ -145,13 +145,14 @@ if __name__ == "__main__":
                         Fu = np.ones(num_clients) * G
                     else:
                         Fu = np.zeros(num_clients)
-                        Fu[0:10] = 1
+                        Fu[0:15] = 1
 
                     # Assign proportion and attack params
                     for i in range(len(clients)):
-                        aggregator.clients[i].set_adv_params(Fu[i], atk_params)
-                        aggregator.clients[i].update_advnn()
-                        aggregator.clients[i].assign_advdataset()
+                        if Fu[i] > 0:
+                            aggregator.clients[i].set_adv_params(Fu[i], atk_params)
+                            aggregator.clients[i].update_advnn()
+                            aggregator.clients[i].assign_advdataset()
 
             aggregator.mix()
             
