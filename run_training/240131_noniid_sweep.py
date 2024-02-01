@@ -145,7 +145,7 @@ if __name__ == "__main__":
                         Fu = np.ones(num_clients) * G
                     else:
                         Fu = np.zeros(num_clients)
-                        Fu[0:20] = 1
+                        Fu[0:20] = 1 # 15 for cifar 10 
 
                     # Assign proportion and attack params
                     for i in range(len(clients)):
