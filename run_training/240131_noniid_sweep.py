@@ -47,11 +47,11 @@ if __name__ == "__main__":
     
     os.chdir(parent_dir) # As we are in a folder
 
-    exp_names = ['med_iid', 'med_niid'] # ['tm_iid', 'tm_niid', 'med_iid', 'med_niid']
-    iid_mode = [ True, False]# [True, False, True, False]
-    agg_op_list = ["median", "median"] #  ["trimmed_mean", "trimmed_mean", "median", "median"]
-    exp_method = ['FedAvg_adv','FedAvg_adv']# ['FedAvg_adv','FedAvg_adv','FedAvg_adv','FedAvg_adv']
-    save_folder = 'weights/cifar10/240131_niid_test/'
+    exp_names =['tm_iid', 'tm_niid', 'med_iid', 'med_niid']
+    iid_mode = [True, False, True, False]
+    agg_op_list =  ["trimmed_mean", "trimmed_mean", "median", "median"]
+    exp_method = ['FedAvg_adv','FedAvg_adv','FedAvg_adv','FedAvg_adv']
+    save_folder = 'weights/cifar100/240201_niid_test/'
     agg_tm_rate = 0.1
 
     exp_num_learners = 1
@@ -64,14 +64,14 @@ if __name__ == "__main__":
         
         # Manually set argument parameters
         args_ = Args()
-        args_.experiment = "cifar10"
+        args_.experiment = "cifar100"
         args_.method = exp_method[itt]
         args_.decentralized = False
         args_.sampling_rate = 1.0
         args_.input_dimension = None
         args_.output_dimension = None
         args_.n_learners= exp_num_learners
-        args_.n_rounds = 150
+        args_.n_rounds = 200
         args_.bz = 128
         args_.local_steps = 1
         args_.lr_lambda = 0
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         # Other Argument Parameters
         Q = 10 # update per round
         G = 0.5
-        num_clients = 40
+        num_clients = 50
         S = 0.05 # Threshold
         step_size = 0.01
         K = 10
@@ -145,7 +145,7 @@ if __name__ == "__main__":
                         Fu = np.ones(num_clients) * G
                     else:
                         Fu = np.zeros(num_clients)
-                        Fu[0:15] = 1
+                        Fu[0:20] = 1
 
                     # Assign proportion and attack params
                     for i in range(len(clients)):
