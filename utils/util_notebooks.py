@@ -346,3 +346,105 @@ def pull_model_from_agg(aggregator):
     # first make the model with empty weights
     new_model = copy.deepcopy(hypotheses[0].model)
     return new_model
+
+######## 
+#   BELOW IS ARU INJECTION STUFF
+########
+
+# Calculate uploaded model and download to attacker clients in aggregator
+# Current version working under the assumption of close to convergence (no benign client pushback)
+def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
+
+    atk_model = copy.deepcopy(model_global)
+    inject_state_dict = model_inject.state_dict(keep_vars=True)
+    global_state_dict = model_global.state_dict(keep_vars=True)
+    return_state_dict = atk_model.state_dict(keep_vars=True)
+    total_weight = weight_scale * weight_scale_2
+
+    for key in keys:
+        diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
+        return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
+
+    return atk_model
+
+# Expand aggregator.mix() function
+def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=False, aggregation_op = None, tm_beta = 0.05):
+    weight_scale = 1/aggregator.clients_weights
+    model_global = aggregator.global_learners_ensemble[0].model
+
+    if aggregation_op == None:
+        aggregation_op = aggregator.aggregation_op
+
+    # Give adversarial clients boosted models and train regular clients 1 round
+    benign_id = list(range(len(aggregator.clients)))
+    for a_id in adv_id:
+        benign_id.remove(a_id)
+        temp_atk_model = calc_atk_model(model_inject, model_global, keys, weight_scale[a_id], weight_scale_2)
+        aggregator.clients[a_id].learners_ensemble[0].model = copy.deepcopy(temp_atk_model)
+
+    for c_id in benign_id:
+        aggregator.clients[c_id].step()
+
+    # Aggregate model and download
+    for learner_id, learner in enumerate(aggregator.global_learners_ensemble):
+        learners = [client.learners_ensemble[learner_id] for client in aggregator.clients]
+        if aggregation_op is None:
+            average_learners(learners, learner, weights=aggregator.clients_weights)
+        elif aggregation_op == 'median':
+            dump_path = (
+                os.path.join(aggregator.dump_path, f"round{aggregator.c_round}_median.pkl") 
+                if dump_flag
+                else None
+            )
+            byzantine_robust_aggregate_median(
+                learners, 
+                learner, 
+                dump_path=dump_path
+            )
+        elif aggregation_op == 'trimmed_mean':
+            dump_path = (
+                os.path.join(aggregator.dump_path, f"round{aggregator.c_round}_tm.pkl")
+                if dump_flag
+                else None
+            )
+            byzantine_robust_aggregate_tm(
+                learners, 
+                learner, 
+                beta=tm_beta, 
+                dump_path=dump_path
+            )
+        elif aggregation_op == 'krum':
+            dump_path = (
+                os.path.join(aggregator.dump_path, f"round{aggregator.c_round}_krum.pkl")
+                if dump_flag
+                else None
+            )
+            byzantine_robust_aggregate_krum(
+                learners, 
+                learner, 
+                dump_path=dump_path
+            )
+        elif aggregation_op == 'krum_modelwise':
+            dump_path = (
+                os.path.join(aggregator.dump_path, f"round{aggregator.c_round}_krum_modelwise.pkl")
+                if dump_flag
+                else None
+            )
+            byzantine_robust_aggregate_krum_modelwise(
+                1,
+                learners,
+                learner,
+                dump_path=dump_path
+            )
+        else:
+            raise NotImplementedError
+
+
+    # assign the updated model to all clients
+    aggregator.update_clients()
+
+    aggregator.c_round += 1
+
+    # if aggregator.c_round % aggregator.log_freq == 0:
+    #     aggregator.write_logs()
+    return 
