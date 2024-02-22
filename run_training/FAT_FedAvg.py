@@ -47,12 +47,15 @@ if __name__ == "__main__":
     
     os.chdir(parent_dir) # As we are in a folder
 
-    exp_names = ['FedAvg']#['fedavg','FAT']
-    exp_method = ['FedAvg'] #['FedAvg_adv','FedAvg_adv']
-    save_folder = 'weights/cifar10/240117_FedAvg150round/'
+    dataset = "celeba"
+    exp_names = ['FAT']#['fedavg','FAT']
+    exp_method = ['FedAvg_adv'] #['FedAvg_adv','FedAvg_adv']
+    save_folder = 'weights/celeba/240221_FedAvg150round/'
 
     exp_num_learners = [1]
-    exp_lr = [0.01]
+    exp_lr = [0.03]
+
+    
     
         
     for itt in range(len(exp_names)):
@@ -61,7 +64,7 @@ if __name__ == "__main__":
         
         # Manually set argument parameters
         args_ = Args()
-        args_.experiment = "cifar10"
+        args_.experiment = dataset
         args_.method = exp_method[itt]
         args_.decentralized = False
         args_.sampling_rate = 1.0
@@ -102,6 +105,10 @@ if __name__ == "__main__":
         
         # Generate the dummy values here
         aggregator, clients = dummy_aggregator(args_, num_clients)
+
+        # Change client datset
+        for i in range(len(clients)):
+            aggregator.clients[i].dataset_name = dataset
 
         # Set attack parameters
         if exp_method[itt] == 'FedAvg_adv':

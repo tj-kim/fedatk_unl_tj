@@ -90,6 +90,11 @@ def get_learner(
         metric = accuracy
         model = FemnistCNN(num_classes=10).to(device)
         is_binary_classification = False
+    elif name == "celeba":
+        criterion = nn.CrossEntropyLoss(reduction="none").to(device)
+        metric = accuracy
+        model = get_mobilenet(n_classes=16).to(device)
+        is_binary_classification = False
     elif name == "shakespeare":
         all_characters = string.printable
         labels_weight = torch.ones(len(all_characters), device=device)
@@ -200,7 +205,7 @@ def get_learners_ensemble(
         return LearnersEnsemble(learners=learners, learners_weights=learners_weights)
 
 
-def get_loaders(type_, root_path, batch_size, is_validation):
+def get_loaders(type_, root_path, batch_size, is_validation, client_limit = None):
     """
     constructs lists of `torch.utils.DataLoader` object from the given files in `root_path`;
      corresponding to `train_iterator`, `val_iterator` and `test_iterator`;
@@ -221,10 +226,14 @@ def get_loaders(type_, root_path, batch_size, is_validation):
         inputs, targets = get_emnist()
     elif type_ == "mnist":
         inputs, targets = get_mnist()
+    elif type_ == "celeba":
+        inputs, targets = get_celeba()
     else:
         inputs, targets = None, None
 
     train_iterators, val_iterators, test_iterators = [], [], []
+
+
 
     for task_id, task_dir in enumerate(tqdm(os.listdir(root_path))):
         task_data_path = os.path.join(root_path, task_dir)
@@ -268,6 +277,10 @@ def get_loaders(type_, root_path, batch_size, is_validation):
         val_iterators.append(val_iterator)
         test_iterators.append(test_iterator)
 
+        if client_limit != None and len(train_iterators) >= client_limit:
+            break # Desire to use less clients than the total partition of data
+
+
     return train_iterators, val_iterators, test_iterators
 
 
@@ -296,6 +309,8 @@ def get_loader(type_, path, batch_size, train, inputs=None, targets=None):
         dataset = CharacterDataset(path, chunk_len=SHAKESPEARE_CONFIG["chunk_len"])
     elif type_ == "mnist":
         dataset = SubMNIST(path, mnist_data=inputs, mnist_targets=targets)
+    elif type_ == "celeba":
+        dataset = SubCelebA(path, celeba_data=inputs, celeba_targets=targets)
     else:
         raise NotImplementedError(f"{type_} not recognized type; possible are {list(LOADER_TYPE.keys())}")
 
@@ -303,7 +318,7 @@ def get_loader(type_, path, batch_size, train, inputs=None, targets=None):
         return
 
     # drop last batch, because of BatchNorm layer used in mobilenet_v2
-    drop_last = ((type_ == "cifar100") or (type_ == "cifar10")) and (len(dataset) > batch_size) and train
+    drop_last = ((type_ == "cifar100") or (type_ == "cifar10") or (type_ == "celeba")) and (len(dataset) > batch_size) and train
 
     return DataLoader(dataset, batch_size=batch_size, shuffle=train, drop_last=drop_last)
 

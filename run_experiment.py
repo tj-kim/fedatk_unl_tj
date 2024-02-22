@@ -16,7 +16,7 @@ from utils.args import *
 from torch.utils.tensorboard import SummaryWriter
 
 
-def init_clients(args_, root_path, logs_root):
+def init_clients(args_, root_path, logs_root, client_limit = None):
     """
     initialize clients from data folders
     :param args_:
@@ -30,7 +30,8 @@ def init_clients(args_, root_path, logs_root):
             type_=LOADER_TYPE[args_.experiment],
             root_path=root_path,
             batch_size=args_.bz,
-            is_validation=args_.validation
+            is_validation=args_.validation,
+            client_limit = client_limit
         )
 
     print("===> Initializing clients..")

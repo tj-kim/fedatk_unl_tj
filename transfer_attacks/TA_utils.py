@@ -106,19 +106,23 @@ def dummy_aggregator(args_, num_user=80):
     clients_temp = init_clients(
         args_,
         root_path=os.path.join(data_dir, "train"),
-        logs_root=os.path.join(logs_root, "train")
+        logs_root=os.path.join(logs_root, "train"),
+        client_limit = num_user
     )
 
     clients = clients_temp[:num_user]
+
+    ### REMOVED DUE TO MEMORY LIMITS    
+    # print("==> Test Clients initialization..")
+    # test_clients_temp = init_clients(
+    #     args_,
+    #     root_path=os.path.join(data_dir, "test"),
+    #     logs_root=os.path.join(logs_root, "test"),
+    #     client_limit = num_user
+    # )
     
-    print("==> Test Clients initialization..")
-    test_clients_temp = init_clients(
-        args_,
-        root_path=os.path.join(data_dir, "test"),
-        logs_root=os.path.join(logs_root, "test")
-    )
-    
-    test_clients = test_clients_temp[:num_user]
+    # test_clients = test_clients_temp[:num_user]
+    test_clients = clients
 
     logs_path = os.path.join(logs_root, "train", "global")
     os.makedirs(logs_path, exist_ok=True)

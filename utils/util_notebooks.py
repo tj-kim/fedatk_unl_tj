@@ -12,7 +12,7 @@ import torch
 
 # setting = 'FedAvg'
 
-def set_args(setting, num_user):
+def set_args(setting, num_user, experiment = "cifar10"):
 
     if setting == 'FedEM':
         nL = 3
@@ -21,7 +21,7 @@ def set_args(setting, num_user):
 
     # Manually set argument parameters
     args_ = Args()
-    args_.experiment = "cifar10"
+    args_.experiment = experiment
     args_.method = setting
     args_.decentralized = False
     args_.sampling_rate = 1.0
@@ -47,7 +47,7 @@ def set_args(setting, num_user):
     args_.validation = False
 
     # Generate the dummy values here
-    aggregator, clients = dummy_aggregator(args_, num_user=40)
+    aggregator, clients = dummy_aggregator(args_, num_user)
     return aggregator, clients, args_
 
 def import_model_weights(num_models, setting, save_path, aggregator, args_):

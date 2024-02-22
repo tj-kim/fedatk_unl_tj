@@ -3,9 +3,9 @@ import pickle
 import string
 
 import torch
-from torchvision.datasets import CIFAR10, CIFAR100, EMNIST, MNIST
-from torchvision.transforms import Compose, ToTensor, Normalize
-from torch.utils.data import Dataset
+from torchvision.datasets import CIFAR10, CIFAR100, EMNIST, MNIST, CelebA
+from torchvision.transforms import Compose, ToTensor, Normalize, Resize
+from torch.utils.data import Dataset, ConcatDataset, Subset
 
 import numpy as np
 from PIL import Image
@@ -326,6 +326,110 @@ class SubMNIST(Dataset):
 
         return img, target, index
     
+# class SubCeleba(Dataset):
+#     """
+#     Constructs a subset of celeba dataset from a pickle file;
+#     expects pickle file to store list of indices
+
+#     Attributes
+#     ----------
+#     indices: iterable of integers
+#     transform
+#     data
+#     targets
+
+#     Methods
+#     -------
+#     __init__
+#     __len__
+#     __getitem__
+#     """
+#     def __init__(self, path, celeba_data=None, celeba_targets=None, transform=None):
+#         """
+#         :param path: path to .pkl file; expected to store list of indices:
+#         :param celeba_data: celeba-16 dataset inputs
+#         :param celeba_targets: celeba-16 dataset labels
+#         :param transform:
+#         """
+#         with open(path, "rb") as f:
+#             self.indices = pickle.load(f)
+
+#         self.transform = None # Transform occurs in get_celeba to reduce Gpu memory load
+
+
+#         if celeba_data is None or celeba_targets is None:
+#             self.data, self.targets = get_celeba()
+
+#         else:
+#             self.data, self.targets = celeba_data, celeba_targets
+
+#         self.data = self.data[self.indices]
+#         self.targets = self.targets[self.indices]
+
+#     def __len__(self):
+#         return self.data.size(0)
+
+#     def __getitem__(self, index):
+#         img, target = self.data[index], self.targets[index]
+
+#         img = Image.fromarray(img.numpy())
+
+#         if self.transform is not None:
+#             img = self.transform(img)
+
+#         target = target
+
+#         return img, target, index
+    
+class SubCelebA(Dataset):
+    """
+    Constructs a subset of CelebA dataset from a pickle file;
+    expects pickle file to store list of indices
+
+    Attributes
+    ----------
+    indices: iterable of integers
+    transform
+    data
+    targets
+
+    Methods
+    -------
+    __init__
+    __len__
+    __getitem__
+    """
+
+    def __init__(self, path, celeba_data=None, celeba_targets=None, transform=None):
+        """
+        :param path: path to .pkl file; expected to store list of indices
+        :param celeba_data: Concatenated train_test data
+        :param transform:
+        """
+        with open(path, "rb") as f:
+            self.indices = pickle.load(f)
+            
+        if celeba_data is None:
+            self.data, self.targets = get_celeba()
+        else:
+            self.data, self.targets = celeba_data, celeba_targets
+        
+        self.data = self.data[self.indices]
+        self.targets = self.targets[self.indices]
+#         self.img = []
+#         self.target = []
+#         for idx, (im, tar) in enumerate(self.subset_data):
+#             self.img.append(np.array(im))
+#             self.target.append(tar)
+#         Cant Load all the data in memory
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        img, target = self.data[index], self.targets[index]
+
+        return img, int(target), index
 
 class CharacterDataset(Dataset):
     def __init__(self, file_path, chunk_len):
@@ -516,3 +620,108 @@ def get_mnist():
         ])
 
     return mnist_data, mnist_targets
+
+# def get_celeba():
+#     """
+#     gets full (both train and test) celeba dataset inputs and labels;
+#     the dataset should be first downloaded (see data/emnist/README.md)
+#     :return:
+#         celeba_data, celeba_targets
+#     """
+#     celeba_path = os.path.join("data", "celeba", "raw_data")
+#     assert os.path.isdir(celeba_path), "Download celeba dataset!!"
+
+#     transform = Compose([
+#             Resize((40, 40)),
+#             ToTensor(),
+#             Normalize(
+#                         (0.4914, 0.4822, 0.4465),
+#                         (0.2023, 0.1994, 0.2010)
+#                     )])
+
+#     celeba_train =\
+#         CelebA(
+#             root=celeba_path,
+#             split='train', download=False,
+#             transform = transform,
+#             target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35])
+#         )
+
+#     celeba_test =\
+#         CelebA(
+#             root=celeba_path,
+#             split='test',
+#             download=False,
+#             transform = transform,
+#             target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35]))
+
+#     celeba_data = \
+#         torch.cat([
+#             torch.tensor(celeba_train.data),
+#             torch.tensor(celeba_test.data)
+#         ])
+
+#     celeba_targets = \
+#         torch.cat([
+#             torch.tensor(celeba_train.targets),
+#             torch.tensor(celeba_test.targets)
+#         ])
+
+#     return celeba_data, celeba_targets
+
+def get_celeba():
+    celeba_path = os.path.join("data", "celeba", "raw_data")
+    assert os.path.isdir(celeba_path), "Download celeba dataset!!"
+    
+    transform =\
+                Compose([
+                    #Resize((45, 55)),
+                    ToTensor(),
+                    Normalize(
+                        (0.4914, 0.4822, 0.4465),
+                        (0.2023, 0.1994, 0.2010)
+                    )
+                ])
+    
+    celeba_train =\
+        CelebA(
+            root= celeba_path,
+            split='train', download=False,
+            transform = transform,
+            target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35]) # Smiling, Male, Eyeglasses, Wearing Hat
+        )
+    
+    train_idx = np.load('data/celeba/train_idx.npy', allow_pickle = True)
+    test_idx = np.load('data/celeba/test_idx.npy', allow_pickle = True)
+
+    celeba_test =\
+        CelebA(
+            root=celeba_path,
+            split='test',
+            download=False,
+            transform = transform,
+            target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35])
+    )
+    
+    celeba_train = Subset(celeba_train, train_idx)
+    celeba_test = Subset(celeba_test, test_idx)
+    
+    celeba_data_X = []
+    celeba_data_y = []
+    
+    for idx, data in enumerate(celeba_train):
+        celeba_data_X.append(data[0])
+        celeba_data_y.append(data[1])
+    
+    for idx, data in enumerate(celeba_test):
+        celeba_data_X.append(data[0])
+        celeba_data_y.append(data[1])
+        
+    return torch.stack(celeba_data_X), torch.Tensor(celeba_data_y)
+
+# Celeba tool
+def transform_target(target, required_labels=[31]):
+    target_str = ''
+    for label in required_labels:
+        target_str += str(int(target[label]))
+    return int(target_str, 2)

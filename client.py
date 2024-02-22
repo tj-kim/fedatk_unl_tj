@@ -456,11 +456,12 @@ class Adv_MixtureClient(MixtureClient):
             idx = sample_id[i]
             x_val_normed = x_adv[i]
             y_val = y_adv[i]
-            try:
-                x_val_unnorm = unnormalize_cifar10(x_val_normed)
-            except:
-                x_val_unnorm = unnormalize_femnist(x_val_normed)
-                
+            # try:
+            #     x_val_unnorm = unnormalize_cifar10(x_val_normed)
+            # except:
+            #     x_val_unnorm = unnormalize_femnist(x_val_normed)
+            x_val_unnorm = unnormalize_adv(x_val_normed, self.dataset_name)
+
             if self.unlearning_flag:
                 y = self.adv_nn.forward(x_val_normed)
                 y_amax = torch.argmax(y,dim = 1)
@@ -628,11 +629,12 @@ class Adv_Client(Client):
             idx = sample_id[i]
             x_val_normed = x_adv[i]
             y_val = y_data[i]
-            try:
-                x_val_unnorm = unnormalize_cifar10(x_val_normed)
-            except:
-                x_val_unnorm = unnormalize_femnist(x_val_normed)
-                
+            # try:
+            #     x_val_unnorm = unnormalize_cifar10(x_val_normed)
+            # except:
+            #     x_val_unnorm = unnormalize_femnist(x_val_normed)
+            x_val_unnorm = unnormalize_adv(x_val_normed, self.dataset_name)
+            
             if self.unlearning_flag:
                 y_amax = y_amax_collect[i]
                 
