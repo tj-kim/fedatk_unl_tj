@@ -49,11 +49,12 @@ if __name__ == "__main__":
 
     dataset = "celeba"
     exp_names = ['FAT']#['fedavg','FAT']
-    exp_method = ['FedAvg_adv'] #['FedAvg_adv','FedAvg_adv']
-    save_folder = 'weights/celeba/240221_FedAvg150round/'
+    exp_method = ['FedAvg_adv']#['FedAvg','FedAvg_adv']
+    save_folder = 'weights/celeba/240222_FedAvg200round_lr001/'
 
-    exp_num_learners = [1]
-    exp_lr = [0.03]
+    exp_num_learners = 1
+    exp_lr = 0.01
+    num_rounds = 200
 
     
     
@@ -70,12 +71,12 @@ if __name__ == "__main__":
         args_.sampling_rate = 1.0
         args_.input_dimension = None
         args_.output_dimension = None
-        args_.n_learners= exp_num_learners[itt]
-        args_.n_rounds = 150
+        args_.n_learners= exp_num_learners
+        args_.n_rounds = num_rounds
         args_.bz = 128
         args_.local_steps = 1
         args_.lr_lambda = 0
-        args_.lr = exp_lr[itt]
+        args_.lr = exp_lr
         args_.lr_scheduler = 'multi_step'
         args_.log_freq = 10
         args_.device = 'cuda'
