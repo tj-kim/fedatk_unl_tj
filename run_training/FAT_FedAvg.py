@@ -48,16 +48,15 @@ if __name__ == "__main__":
     os.chdir(parent_dir) # As we are in a folder
 
     dataset = "celeba"
-    exp_names = ['FAT']#['fedavg','FAT']
-    exp_method = ['FedAvg_adv']#['FedAvg','FedAvg_adv']
-    save_folder = 'weights/celeba/240222_FedAvg200round_lr001/'
+    exp_names = ['FAT']
+    exp_method = ['FedAvg_adv']
+    save_folder = 'weights/celeba/240229_LateFAT/'
 
     exp_num_learners = 1
     exp_lr = 0.01
     num_rounds = 200
-
-    
-    
+    num_clients = 40
+    FAT_start_round = 100
         
     for itt in range(len(exp_names)):
         
@@ -94,7 +93,6 @@ if __name__ == "__main__":
         # Other Argument Parameters
         Q = 10 # update per round
         G = 0.5
-        num_clients = 40
         S = 0.05 # Threshold
         step_size = 0.01
         K = 10
@@ -138,7 +136,7 @@ if __name__ == "__main__":
 
             if exp_method[itt] == 'FedAvg_adv':
                 # If statement catching every Q rounds -- update dataset
-                if  current_round != 0 and current_round%Q == 0: # 
+                if  current_round != 0 and current_round%Q == 0 and current_round >= FAT_start_round: # 
                     # print("Round:", current_round, "Calculation Adv")
                     # Obtaining hypothesis information
                     Whu = np.zeros([num_clients,num_h]) # Hypothesis weight for each user
