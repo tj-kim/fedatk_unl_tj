@@ -4,7 +4,7 @@ from transfer_attacks.TA_utils import dummy_aggregator, load_client_data
 from transfer_attacks.Custom_Dataloader import *
 from transfer_attacks.Transferer import *
 from transfer_attacks.Params import *
-
+from utils.torch_utils import *
 
 import numpy as np
 import copy
@@ -448,3 +448,30 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
     # if aggregator.c_round % aggregator.log_freq == 0:
     #     aggregator.write_logs()
     return 
+
+# Calculate uploaded model and download to attacker clients in aggregator
+# Current version working under the assumption of close to convergence (no benign client pushback)
+def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
+
+    atk_model = copy.deepcopy(model_global)
+    inject_state_dict = model_inject.state_dict(keep_vars=True)
+    global_state_dict = model_global.state_dict(keep_vars=True)
+    return_state_dict = atk_model.state_dict(keep_vars=True)
+    total_weight = weight_scale * weight_scale_2
+
+    for key in keys:
+        diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
+        return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
+
+    return atk_model
+
+# Clone data from attack model to client model
+def clone_model_weights(model_source, model_target, keys):
+    target_state_dict = model_target.state_dict(keep_vars=True)
+    source_state_dict = model_source.state_dict(keep_vars=True)
+    
+    for key in keys:
+        target_state_dict[key].data = source_state_dict[key].data.clone()
+
+    return
+
