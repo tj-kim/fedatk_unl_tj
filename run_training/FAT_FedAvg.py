@@ -48,15 +48,15 @@ if __name__ == "__main__":
     os.chdir(parent_dir) # As we are in a folder
 
     dataset = "celeba"
-    exp_names = ['FAT']
-    exp_method = ['FedAvg_adv']
-    save_folder = 'weights/celeba/240229_LateFAT/'
+    exp_names = ['FedAvg']  #  ['FAT']
+    exp_method =  ['FedAvg']#   ['FedAvg_adv'] 
+    save_folder = 'weights/celeba/240311_small_architecture_moreconv/'
 
     exp_num_learners = 1
     exp_lr = 0.01
-    num_rounds = 200
+    num_rounds = 100
     num_clients = 40
-    FAT_start_round = 100
+    FAT_start_round = 10
         
     for itt in range(len(exp_names)):
         

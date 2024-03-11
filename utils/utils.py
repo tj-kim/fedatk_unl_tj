@@ -93,7 +93,8 @@ def get_learner(
     elif name == "celeba":
         criterion = nn.CrossEntropyLoss(reduction="none").to(device)
         metric = accuracy
-        model = get_mobilenet(n_classes=16).to(device)
+        # model = get_mobilenet(n_classes=16).to(device)
+        model = getCelebaCNN(n_classes=16).to(device)
         is_binary_classification = False
     elif name == "shakespeare":
         all_characters = string.printable

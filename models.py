@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import torch 
 
 import torchvision.models as models
 
@@ -81,6 +82,81 @@ class CIFAR10CNN(nn.Module):
         x = self.output(x)
         return x
 
+
+# class CelebaCNN(nn.Module):
+#     def __init__(self, num_classes):
+#         super(CelebaCNN, self).__init__()
+#         self.conv1 = nn.Conv2d(3, 32, kernel_size=5)
+#         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+#         self.conv2 = nn.Conv2d(32, 64, kernel_size=5)
+#         # Calculate the output size after convolution and pooling
+#         self.fc_input_size = self._get_fc_input_size()
+#         self.fc1 = nn.Linear(self.fc_input_size, 2048)
+#         self.output = nn.Linear(2048, num_classes)
+
+#     def forward(self, x):
+#         x = self.pool(F.relu(self.conv1(x)))
+#         x = self.pool(F.relu(self.conv2(x)))
+#         x = x.view(-1, self.fc_input_size)
+#         x = F.relu(self.fc1(x))
+#         x = self.output(x)
+#         return x
+
+#     def _get_fc_input_size(self):
+#         # Calculate the size of the flattened feature map after convolutions and pooling
+#         test_tensor = torch.zeros(1, 3, 55, 45)  # Create a dummy tensor with the desired input shape
+#         test_tensor = self.pool(F.relu(self.conv1(test_tensor)))  # Pass through first convolution and pooling
+#         test_tensor = self.pool(F.relu(self.conv2(test_tensor)))  # Pass through second convolution and pooling
+#         return test_tensor.view(-1).shape[0]  # Return the size of the flattened feature map
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class CelebaCNN(nn.Module):
+    def __init__(self, num_classes):
+        super(CelebaCNN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=5)
+        self.conv1_bn = nn.BatchNorm2d(16)  # Batch normalization after first convolutional layer
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=5)
+        self.conv2_bn = nn.BatchNorm2d(32)  # Batch normalization after second convolutional layer
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=5)
+        self.conv3_bn = nn.BatchNorm2d(64)  # Batch normalization after third convolutional layer
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        # Calculate the output size after convolution and pooling
+        self.fc_input_size = self._get_fc_input_size()
+        self.fc1 = nn.Linear(self.fc_input_size, 2048)
+        self.output = nn.Linear(2048, num_classes)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1_bn(self.conv1(x))))  # Apply batch normalization after the first convolutional layer
+        x = self.pool(F.relu(self.conv2_bn(self.conv2(x))))  # Apply batch normalization after the second convolutional layer
+        x = self.pool(F.relu(self.conv3_bn(self.conv3(x))))  # Apply batch normalization after the third convolutional layer
+        x = x.view(-1, self.fc_input_size)
+        x = F.relu(self.fc1(x))
+        x = self.output(x)
+        return x
+
+    def _get_fc_input_size(self):
+        # Calculate the size of the flattened feature map after convolutions and pooling
+        test_tensor = torch.zeros(1, 3, 55, 45)  # Create a dummy tensor with the desired input shape
+        test_tensor = self.pool(F.relu(self.conv1_bn(self.conv1(test_tensor))))  # Pass through first convolution, batch normalization, and pooling
+        test_tensor = self.pool(F.relu(self.conv2_bn(self.conv2(test_tensor))))  # Pass through second convolution, batch normalization, and pooling
+        test_tensor = self.pool(F.relu(self.conv3_bn(self.conv3(test_tensor))))  # Pass through third convolution, batch normalization, and pooling
+        return test_tensor.view(-1).shape[0]  # Return the size of the flattened feature map
+
+
+
+def getCelebaCNN(n_classes):
+    """
+    creates VGG11 model with `n_classes` outputs
+    :param n_classes:
+    :return: nn.Module
+    """
+    model = CelebaCNN(n_classes)
+    # model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
+
+    return model
 
 class NextCharacterLSTM(nn.Module):
     def __init__(self, input_size, embed_size, hidden_size, output_size, n_layers):

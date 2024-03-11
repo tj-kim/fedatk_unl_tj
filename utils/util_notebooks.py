@@ -202,7 +202,7 @@ def get_metric_list(metric_name, logs_adv, victim_idxs):
 
     return metric_list
 
-def cross_attack(logs_adv, victim_idxs, dataloader, models_test, custom_batch_size = 500, eps = 4.5):
+def cross_attack(logs_adv, victim_idxs, dataloader, models_test, custom_batch_size = 500, eps = 4.5, atk_steps = 10):
 
     for adv_idx in victim_idxs:
         print("\t Adv idx:", adv_idx)
@@ -214,7 +214,7 @@ def cross_attack(logs_adv, victim_idxs, dataloader, models_test, custom_batch_si
         
         # Perform Attacks Targeted
         t1.atk_params = PGD_Params()
-        t1.atk_params.set_params(batch_size=batch_size, iteration = 10,
+        t1.atk_params.set_params(batch_size=batch_size, iteration = atk_steps,
                     target = 3, x_val_min = torch.min(dataloader.x_data), 
                     x_val_max = torch.max(dataloader.x_data),
                     step_size = 0.01, step_norm = "inf", eps = eps, eps_norm = 2)
@@ -233,7 +233,7 @@ def cross_attack(logs_adv, victim_idxs, dataloader, models_test, custom_batch_si
         logs_adv[adv_idx]['adv_target'] = copy.deepcopy(t1.adv_target_hit)
 
         # Miss attack Untargeted
-        t1.atk_params.set_params(batch_size=batch_size, iteration = 10,
+        t1.atk_params.set_params(batch_size=batch_size, iteration = atk_steps,
                     target = -1, x_val_min = torch.min(dataloader.x_data), 
                     x_val_max = torch.max(dataloader.x_data),
                     step_size = 0.01, step_norm = "inf", eps = eps, eps_norm = 2)
