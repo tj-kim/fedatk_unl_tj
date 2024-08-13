@@ -629,6 +629,9 @@ class Adv_Client(Client):
             idx = sample_id[i]
             x_val_normed = x_adv[i]
             y_val = y_data[i]
+            
+            num_classes = max(y_data)
+            
             # try:
             #     x_val_unnorm = unnormalize_cifar10(x_val_normed)
             # except:
@@ -641,7 +644,14 @@ class Adv_Client(Client):
                 if y_amax == self.train_iterator.dataset.targets[idx] :
                     y_record += 1/sample_id.shape[0]
         
-                self.train_iterator.dataset.targets[idx] = y_amax
+#                 self.train_iterator.dataset.targets[idx] = y_amax
+
+                new_label = y_val - 1
+
+                # Wrap around if the label goes below 0
+                if new_label < 0:
+                    new_label = num_classes
+                self.train_iterator.dataset.targets[idx] = new_label
             
             else:
                 self.train_iterator.dataset.targets[idx] = y_val
@@ -651,6 +661,9 @@ class Adv_Client(Client):
         self.train_loader = iter(self.train_iterator)
         
         return
+    
+    def reset_dataset(self):
+        self.train_loader = deepcopy(self.og_dataloader)
 
 class Unharden_Client(Client):
     """ 
