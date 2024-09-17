@@ -662,6 +662,87 @@ class Adv_Client(Client):
         
         return
     
+    def generate_adversarial_data_by_labels(self, target_labels):
+        # Generate adversarial datapoints for the specified labels (target_labels)
+
+        # Get all data points that match the target labels
+        all_labels = self.train_iterator.dataset.targets
+        matching_indices = np.where(np.isin(all_labels, target_labels))[0]  # Indices of data points with labels in target_labels
+
+        # Sample randomly from matching_indices without replacement
+        sample_size = int(np.ceil(len(matching_indices) * self.adv_proportion)) # len(matching_indices) 
+        if sample_size == 0:
+            return [], [], []  # No data for target labels
+
+        sample_indices = np.random.choice(a=matching_indices, size=sample_size, replace=False)
+
+        # Select the data and labels corresponding to the sampled indices
+        x_data = self.adv_nn.dataloader.x_data[sample_indices]
+        y_data = self.adv_nn.dataloader.y_data[sample_indices]
+
+        # Generate adversarial data using PGD attack
+        self.adv_nn.pgd_sub(self.atk_params, x_data.cuda(), y_data.cuda())
+        x_adv = self.adv_nn.x_adv
+
+        # Return the sampled indices, adversarial data, and the original labels
+        return sample_indices, x_adv, y_data
+    
+    def assign_advdataset_by_labels(self, target_labels):
+        # Reset dataset to original state (no adversarial examples)
+        self.train_iterator = deepcopy(self.og_dataloader)
+
+        # Generate adversarial datasets for specified labels
+        sample_indices, x_adv, y_data = self.generate_adversarial_data_by_labels(target_labels)
+
+        if len(sample_indices) == 0:
+            return  # No adversarial data generated, so nothing to assign
+
+        y_record = 0
+
+        # Get predictions for the adversarial data points
+        y_collect = self.adv_nn.forward(x_adv)
+        y_amax_collect = torch.argmax(y_collect, dim=1)
+
+        num_classes = max(self.train_iterator.dataset.targets)
+
+        # Loop through each of the sampled indices
+        for i in range(len(sample_indices)):
+            idx = sample_indices[i]
+            x_val_normed = x_adv[i]
+            y_val = y_data[i]
+
+            # Unnormalize the adversarial example (depends on dataset)
+            x_val_unnorm = unnormalize_adv(x_val_normed, self.dataset_name)
+
+            # If unlearning flag is set, adjust labels
+            if self.unlearning_flag:
+                y_amax = y_amax_collect[i]
+
+                # If the predicted label matches the true label, record this
+                if y_amax == self.train_iterator.dataset.targets[idx]:
+                    y_record += 1 / len(sample_indices)
+
+                # Adjust label (decrease by 1) and wrap around if necessary
+                new_label = y_val - 1
+                if new_label < 0:
+                    new_label = num_classes
+                self.train_iterator.dataset.targets[idx] = new_label
+
+            else:
+                # Retain original label if unlearning is not enabled
+                self.train_iterator.dataset.targets[idx] = y_val
+
+            # Replace the original data with the unnormalized adversarial data
+            self.train_iterator.dataset.data[idx] = x_val_unnorm
+
+        # Update unlearning record
+        self.unl_record.append(y_record)
+
+        # Reload the dataset with adversarial examples into the data loader
+        self.train_loader = iter(self.train_iterator)
+
+
+    
     def reset_dataset(self):
         self.train_loader = deepcopy(self.og_dataloader)
 
