@@ -525,6 +525,9 @@ class Adv_Client(Client):
 
         self.unhardened_portion = None
         self.unhard = False
+
+        # Collecting Perturbations
+        self.collected_perturbations = []
     
     def set_unhard(self, unhard = False, unharden_portion = None):
         self.unhard = unhard
@@ -735,13 +738,37 @@ class Adv_Client(Client):
             # Replace the original data with the unnormalized adversarial data
             self.train_iterator.dataset.data[idx] = x_val_unnorm
 
+        # add the perturbed data values
+        self.collected_perturbations = self.train_iterator.dataset.data[sample_indices] - self.og_dataloader.dataset.data[sample_indices]
+
         # Update unlearning record
         self.unl_record.append(y_record)
 
         # Reload the dataset with adversarial examples into the data loader
         self.train_loader = iter(self.train_iterator)
 
+    def transfer_advdataset(self, donate_labels):
 
+        # Get all data points that match the target labels
+        all_labels = self.train_iterator.dataset.targets
+        matching_indices = np.where(np.isin(all_labels, donate_labels))[0]  # Indices of data points with labels in target_labels
+
+        # Sample randomly from matching_indices without replacement
+        sample_size = int(np.ceil(len(matching_indices) * self.adv_proportion)) # len(matching_indices) 
+        if sample_size == 0:
+            return
+
+        sample_indices = np.random.choice(a=matching_indices, size=sample_size, replace=False)
+        
+        for i in range(len(sample_indices)):
+            idx = sample_indices[i]
+            x_val_normed = x_adv[i]
+            y_val = y_data[i]
+
+            # Unnormalize the adversarial example (depends on dataset)
+            x_val_unnorm = unnormalize_adv(x_val_normed, self.dataset_name)
+
+        return 
     
     def reset_dataset(self):
         self.train_loader = deepcopy(self.og_dataloader)
