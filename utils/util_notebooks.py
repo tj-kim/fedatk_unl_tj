@@ -243,6 +243,47 @@ def cross_attack(logs_adv, victim_idxs, dataloader, models_test, custom_batch_si
         logs_adv[adv_idx]['adv_similarities_untarget'] = copy.deepcopy(t1.adv_similarities)
 
 
+def cross_attack_target(logs_adv, victim_idxs, dataloader, models_test, 
+                        target_labels, custom_batch_size=500, eps=4.5, atk_steps=10):
+
+    for adv_idx in victim_idxs:
+        print("\t Adv idx:", adv_idx)
+                
+        batch_size = min(custom_batch_size, dataloader.y_data.shape[0])
+        
+        t1 = Transferer(models_list=models_test, dataloader=dataloader)
+        t1.generate_victims(victim_idxs)
+        
+        # Perform Attacks Targeted
+        t1.atk_params = PGD_Params()
+        t1.atk_params.set_params(batch_size=batch_size, iteration = atk_steps,
+                    target = 3, x_val_min = torch.min(dataloader.x_data), 
+                    x_val_max = torch.max(dataloader.x_data),
+                    step_size = 0.01, step_norm = "inf", eps = eps, eps_norm = 2)
+        
+        
+        
+        t1.generate_advNN(adv_idx)
+        t1.generate_xadv(atk_type = "pgd")
+        t1.send_to_victims(victim_idxs, target_labels)
+
+        # Log Performance
+        logs_adv[adv_idx]['orig_acc_transfers'] = copy.deepcopy(t1.orig_acc_transfers)
+        logs_adv[adv_idx]['orig_similarities'] = copy.deepcopy(t1.orig_similarities)
+        logs_adv[adv_idx]['adv_acc_transfers'] = copy.deepcopy(t1.adv_acc_transfers)
+        logs_adv[adv_idx]['adv_similarities_target'] = copy.deepcopy(t1.adv_similarities)        
+        logs_adv[adv_idx]['adv_target'] = copy.deepcopy(t1.adv_target_hit)
+
+        # Miss attack Untargeted
+        t1.atk_params.set_params(batch_size=batch_size, iteration = atk_steps,
+                    target = -1, x_val_min = torch.min(dataloader.x_data), 
+                    x_val_max = torch.max(dataloader.x_data),
+                    step_size = 0.01, step_norm = "inf", eps = eps, eps_norm = 2)
+        t1.generate_xadv(atk_type = "pgd")
+        t1.send_to_victims(victim_idxs, target_labels)
+        logs_adv[adv_idx]['adv_miss'] = copy.deepcopy(t1.adv_acc_transfers)
+        logs_adv[adv_idx]['adv_similarities_untarget'] = copy.deepcopy(t1.adv_similarities)
+        
 ### Below is for cosine similarity experiments
 ### Where gradual transition/catastrophic forgetting is performed
 from sklearn.metrics.pairwise import cosine_similarity

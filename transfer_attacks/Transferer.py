@@ -115,7 +115,8 @@ class Transferer():
         for i in self.victim_idxs:
             self.victims[i] = copy.deepcopy(Personalized_NN(self.models_list[i]))
     
-    def send_to_victims(self, client_idxs):
+            
+    def send_to_victims(self, client_idxs, target_labels = None):
         """
         Send pre-generated adversarial perturbations 
         client_idxs - list of indices of clients we want to attack (just victims)
@@ -125,11 +126,35 @@ class Transferer():
         
         for i in client_idxs:
           
-            self.victims[i].forward_transfer(self.x_orig,self.x_adv,
-                                         self.y_orig,self.y_adv,
-                                         self.y_true, self.atk_params.target, 
-                                         print_info=False)
+            if target_labels == None:
+                self.victims[i].forward_transfer(self.x_orig,self.x_adv,
+                                             self.y_orig,self.y_adv,
+                                             self.y_true, self.atk_params.target, 
+                                             print_info=False)
+            else:
+                labels_tensor = self.y_true
+                # Convert target_labels to a set for fast lookups
+                target_labels_set = set(target_labels)
 
+                # Create a boolean mask for elements in target_labels_set
+                target_mask = torch.tensor([label.item() in target_labels_set for label in labels_tensor], device=labels_tensor.device)
+
+                # Get indices where target_mask is True
+                target_indices = torch.nonzero(target_mask).squeeze()
+
+                # Filter the tensor based on these indices
+                filtered_tensor = labels_tensor[target_indices]
+
+                
+                x_orig = self.x_orig[target_indices]
+                x_adv = self.x_adv[target_indices]
+                y_orig = self.y_orig[target_indices]
+                y_adv = self.y_adv[target_indices]
+                y_true = self.y_true[target_indices]
+                self.victims[i].forward_transfer(x_orig,x_adv,
+                                             y_orig,y_adv,
+                                             y_true, self.atk_params.target, 
+                                             print_info=False)
             # Record Performance
             self.orig_acc_transfers_robust[i] = self.victims[i].orig_test_acc_robust
             self.orig_similarities_robust[i] = self.victims[i].orig_output_sim_robust
