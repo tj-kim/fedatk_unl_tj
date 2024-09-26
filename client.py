@@ -696,6 +696,7 @@ class Adv_Client(Client):
 
         # Generate adversarial datasets for specified labels
         sample_indices, x_adv, y_data = self.generate_adversarial_data_by_labels(target_labels)
+        sample_indices.sort()
 
         if len(sample_indices) == 0:
             return  # No adversarial data generated, so nothing to assign
@@ -739,7 +740,8 @@ class Adv_Client(Client):
             self.train_iterator.dataset.data[idx] = x_val_unnorm
 
         # add the perturbed data values
-        self.collected_perturbations = self.train_iterator.dataset.data[sample_indices] - self.og_dataloader.dataset.data[sample_indices]
+        self.collected_perturbations = self.train_iterator.dataset.data[sample_indices].float() - self.og_dataloader.dataset.data[sample_indices].float()
+        self.sample_idxs_store = sample_indices
 
         # Update unlearning record
         self.unl_record.append(y_record)
@@ -759,14 +761,16 @@ class Adv_Client(Client):
             return
 
         sample_indices = np.random.choice(a=matching_indices, size=sample_size, replace=False)
+        self.sample_idx_donate = sample_indices
         
         for i in range(len(sample_indices)):
+            perturb_idx_sample = random.randint(0, self.collected_perturbations.shape[0]-1)
             idx = sample_indices[i]
-            x_val_normed = x_adv[i]
-            y_val = y_data[i]
-
-            # Unnormalize the adversarial example (depends on dataset)
-            x_val_unnorm = unnormalize_adv(x_val_normed, self.dataset_name)
+            orig = self.train_iterator.dataset.data[idx].float()
+            perturbed = self.collected_perturbations[perturb_idx_sample].float()
+            summed = orig + perturbed
+            clipped_tensor = torch.clamp(summed, min=0, max=255)
+            self.train_iterator.dataset.data[idx] = clipped_tensor.byte()
 
         return 
     
