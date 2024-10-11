@@ -665,8 +665,10 @@ class Adv_Client(Client):
         
         return
     
-    def generate_adversarial_data_by_labels(self, target_labels):
+    def generate_adversarial_data_by_labels(self, target_labels, adv_target_labels_specified = None):
         # Generate adversarial datapoints for the specified labels (target_labels)
+        # adv_target_labels is the non_target_labels for which targeted pgd will be performed 
+
 
         # Get all data points that match the target labels
         all_labels = self.train_iterator.dataset.targets
@@ -684,18 +686,32 @@ class Adv_Client(Client):
         y_data = self.adv_nn.dataloader.y_data[sample_indices]
 
         # Generate adversarial data using PGD attack
-        self.adv_nn.pgd_sub(self.atk_params, x_data.cuda(), y_data.cuda())
+        self.adv_nn.pgd_sub(self.atk_params, x_data.cuda(), y_data.cuda(),y_targets = adv_target_labels_specified)
         x_adv = self.adv_nn.x_adv
 
         # Return the sampled indices, adversarial data, and the original labels
         return sample_indices, x_adv, y_data
     
-    def assign_advdataset_by_labels(self, target_labels):
+    def assign_advdataset_by_labels(self, target_labels, adv_target_labels = None):
+        # adv_target_labels is the non_target_labels for which targeted pgd will be performed 
         # Reset dataset to original state (no adversarial examples)
         self.train_iterator = deepcopy(self.og_dataloader)
 
+        # sample tensor or integers from adv_target_labels
+        if adv_target_labels == None:
+            adv_target_labels_specified = None
+        else:
+            all_labels = self.train_iterator.dataset.targets
+            matching_indices = np.where(np.isin(all_labels, target_labels))[0]  # Indices of data points with labels in target_labels
+            sample_size = int(np.ceil(len(matching_indices) * self.adv_proportion)) # len(matching_indices) 
+
+            sampled_list = random.choices(adv_target_labels, k=sample_size)
+
+            # Convert the sampled list to a tensor
+            adv_target_labels_specified = torch.LongTensor(sampled_list)
+        
         # Generate adversarial datasets for specified labels
-        sample_indices, x_adv, y_data = self.generate_adversarial_data_by_labels(target_labels)
+        sample_indices, x_adv, y_data = self.generate_adversarial_data_by_labels(target_labels, adv_target_labels_specified)
         sample_indices.sort()
 
         if len(sample_indices) == 0:

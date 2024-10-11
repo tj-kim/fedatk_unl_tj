@@ -50,13 +50,13 @@ if __name__ == "__main__":
     dataset = "cifar10"
     exp_names =   ['FAT'] # ['FedAvg']
     exp_method =  ['FedAvg_adv'] # ['FedAvg']
-    save_folder = 'weights/cifar10/fat2/240920_subset_label_transfer_G05/'
+    save_folder = 'weights/cifar10/fat2/241011_subset_label_targeted_G05/'
 
     exp_num_learners = 1
     exp_lr = 0.01
     num_rounds = 150
     num_clients = 40
-    FAT_start_round = 10
+    FAT_start_round = 0
     
     target_labels = [5,6,7,8,9] # these are the labels we will adv train on only 
     donate_labels = [0,1,2,3,4]
@@ -139,8 +139,9 @@ if __name__ == "__main__":
 
             if exp_method[itt] == 'FedAvg_adv':
                 # If statement catching every Q rounds -- update dataset
-                if  current_round != 0 and current_round%Q == 0 and current_round >= FAT_start_round: # 
-                    # print("Round:", current_round, "Calculation Adv")
+                # if  current_round != 0 and current_round%Q == 0 and current_round >= FAT_start_round: # 
+                if current_round % Q == 0:
+                    print("Round:", current_round, "Calculation Adv")
                     # Obtaining hypothesis information
                     Whu = np.zeros([num_clients,num_h]) # Hypothesis weight for each user
                     for i in range(len(clients)):
@@ -161,8 +162,8 @@ if __name__ == "__main__":
                     for i in range(len(clients)):
                         aggregator.clients[i].set_adv_params(Fu[i], atk_params)
                         aggregator.clients[i].update_advnn()
-                        aggregator.clients[i].assign_advdataset_by_labels(target_labels)
-                        aggregator.clients[i].transfer_advdataset(donate_labels)
+                        aggregator.clients[i].assign_advdataset_by_labels(target_labels, donate_labels)
+#                         aggregator.clients[i].transfer_advdataset(donate_labels)
 
             aggregator.mix()
             

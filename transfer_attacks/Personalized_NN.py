@@ -209,7 +209,7 @@ class Adv_NN(Personalized_NN):
             
         return 
     
-    def pgd_sub(self, atk_params, x_in, y_in, x_base = None):
+    def pgd_sub(self, atk_params, x_in, y_in, x_base = None, y_targets = None):
         """
         Perform PGD without post-attack analysis
         """
@@ -218,7 +218,6 @@ class Adv_NN(Personalized_NN):
         # Import attack parameters
         eps_norm = atk_params.eps_norm
         batch_size = atk_params.batch_size
-        target= atk_params.target
         eps= atk_params.eps
         alpha= atk_params.step_size
         iteration= atk_params.iteration
@@ -233,7 +232,12 @@ class Adv_NN(Personalized_NN):
         if torch.cuda.is_available():
             self.y_orig = self.y_orig.cuda()
         
-        self.target = target
+        if y_targets is not None:
+            target = 1 # just setting it to be above -1 check 
+        else:
+            target= atk_params.target
+            self.target = target
+            
         
         # Add random noise within norm ball for start (FOR BATCH)
         noise_unscaled = torch.rand(self.x_orig.shape)
@@ -252,8 +256,13 @@ class Adv_NN(Personalized_NN):
             
             # Loss function based on target
             if target > -1:
-                target_tensor = torch.LongTensor(self.y_orig.size()).fill_(target)
-                target_tensor = Variable(cuda(target_tensor, self.cuda), requires_grad=False)
+                if y_targets is not None:
+                    assert len(self.y_orig) == len(y_targets)
+                    target_tensor = torch.LongTensor(y_targets)
+                    target_tensor = Variable(cuda(target_tensor, self.cuda), requires_grad=False)
+                else:
+                    target_tensor = torch.LongTensor(self.y_orig.size()).fill_(target) # have to shift this 
+                    target_tensor = Variable(cuda(target_tensor, self.cuda), requires_grad=False)
                 cost = self.criterion(h_adv, target_tensor)
             else:
                 cost = -self.criterion(h_adv, self.y_orig)
