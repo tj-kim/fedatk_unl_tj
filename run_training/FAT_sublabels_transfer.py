@@ -50,7 +50,7 @@ if __name__ == "__main__":
     dataset = "cifar10"
     exp_names =   ['FAT'] # ['FedAvg']
     exp_method =  ['FedAvg_adv'] # ['FedAvg']
-    save_folder = 'weights/cifar10/fat2/241011_subset_label_targeted_G05/'
+    save_folder = 'weights/cifar10/fat2/241014_subset_label_targeted_G05/'
 
     exp_num_learners = 1
     exp_lr = 0.01
@@ -139,8 +139,8 @@ if __name__ == "__main__":
 
             if exp_method[itt] == 'FedAvg_adv':
                 # If statement catching every Q rounds -- update dataset
-                # if  current_round != 0 and current_round%Q == 0 and current_round >= FAT_start_round: # 
-                if current_round % Q == 0:
+                if  current_round != 0 and current_round%Q == 0 and current_round >= FAT_start_round: # 
+                # if current_round % Q == 0:
                     print("Round:", current_round, "Calculation Adv")
                     # Obtaining hypothesis information
                     Whu = np.zeros([num_clients,num_h]) # Hypothesis weight for each user

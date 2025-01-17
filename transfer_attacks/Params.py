@@ -1,3 +1,5 @@
+import torch
+
 """
 Parameters for IFSGM attack and CW attack that is used by the Transferer class.
 """
@@ -12,8 +14,8 @@ class IFSGM_Params():
         self.alpha = 0.01
         self.iteration = 15
         self.target = 9
-        self.x_val_min = 0
-        self.x_val_max = 1
+        self.x_val_min = torch.tensor(0).cuda()
+        self.x_val_max = torch.tensor(1).cuda()
         
     def set_params(self, batch_size=None, eps=None, alpha=None, iteration = None,
                    target = None, x_val_min = None, x_val_max = None):
@@ -34,10 +36,10 @@ class IFSGM_Params():
             self.target = target
             
         if x_val_min is not None:
-            self.x_val_min = x_val_min
+            self.x_val_min = x_val_min.cuda()
             
         if x_val_max is not None:
-            self.x_val_max = x_val_max
+            self.x_val_max = x_val_max.cuda()
             
 class CW_Params():
     
@@ -85,15 +87,14 @@ class PGD_Params():
         self.batch_size = 500
         self.iteration = 20
         self.target = 20
-        self.x_val_min = 0
-        self.x_val_max = 1
+        self.x_val_min = torch.tensor(0).cuda()
+        self.x_val_max = torch.tensor(1).cuda()
         self.step_size = 0.01
         self.step_norm = "inf"
         self.eps = 0.5
         self.eps_norm = 2
         self.num_class = 10
 
-        
         
     def set_params(self, batch_size=None, iteration = None,
                    target = None, x_val_min = None, x_val_max = None,
@@ -109,10 +110,10 @@ class PGD_Params():
             self.target = target
             
         if x_val_min is not None:
-            self.x_val_min = x_val_min
+            self.x_val_min = x_val_min.cuda()
             
         if x_val_max is not None:
-            self.x_val_max = x_val_max
+            self.x_val_max = x_val_max.cuda()
             
         if step_size is not None:
             self.step_size = step_size

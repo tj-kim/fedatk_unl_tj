@@ -680,6 +680,7 @@ class Adv_Client(Client):
             return [], [], []  # No data for target labels
 
         sample_indices = np.random.choice(a=matching_indices, size=sample_size, replace=False)
+        sample_indices.sort()
 
         # Select the data and labels corresponding to the sampled indices
         x_data = self.adv_nn.dataloader.x_data[sample_indices]
@@ -712,7 +713,8 @@ class Adv_Client(Client):
         
         # Generate adversarial datasets for specified labels
         sample_indices, x_adv, y_data = self.generate_adversarial_data_by_labels(target_labels, adv_target_labels_specified)
-        sample_indices.sort()
+
+        # print(sample_indices)
 
         if len(sample_indices) == 0:
             return  # No adversarial data generated, so nothing to assign
@@ -759,6 +761,16 @@ class Adv_Client(Client):
         self.collected_perturbations = self.train_iterator.dataset.data[sample_indices].float() - self.og_dataloader.dataset.data[sample_indices].float()
         self.sample_idxs_store = sample_indices
 
+        # if adv_target_labels not none
+        if adv_target_labels != None:
+            self.target_perturbations_dict = {}
+            for i in range(len(sample_indices)):
+                key = adv_target_labels_specified[sample_indices[i]]
+                if key not in self.target_perturbations_dict.keys():
+                    self.target_perturbations_dict[key] = []
+                perturbation = self.train_iterator.dataset.data[sample_indices[i]].float() - self.og_dataloader.dataset.data[sample_indices[i]].float()
+                self.target_perturbations_dict[key] += [perturbation]
+
         # Update unlearning record
         self.unl_record.append(y_record)
 
@@ -789,6 +801,10 @@ class Adv_Client(Client):
             self.train_iterator.dataset.data[idx] = clipped_tensor.byte()
 
         return 
+
+    def transfer_advdataset_targeted(self, donate_labels):
+        return
+        
     
     def reset_dataset(self):
         self.train_loader = deepcopy(self.og_dataloader)
