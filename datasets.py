@@ -431,6 +431,50 @@ class SubCelebA(Dataset):
 
         return img, int(target), index
 
+class SubFakeNewsNetwork(Dataset):
+    """
+    Constructs a subset of Fake news network dataset from a pickle file;
+    expects pickle file to store list of [x, y]
+    x - list of values that becomes embedding
+    y - integer, 0 - False, 1 - True
+
+    Attributes
+    ----------
+    indices: iterable of integers
+    transform
+    data
+    targets
+
+    Methods
+    -------
+    __init__
+    __len__
+    __getitem__
+    """
+
+    def __init__(self, path, data=None, targets=None):
+        """
+        :param path: path to .pkl file; expected to store list of indices
+        :param celeba_data: Concatenated train_test data
+        :param transform:
+        """
+        with open(path, "rb") as f:
+            imported_data = pickle.load(f)
+
+        self.indices = None 
+            
+        self.data = self.data[self.indices]
+        self.targets = self.targets[self.indices]
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        img, target = self.data[index], self.targets[index]
+
+        return img, int(target), index
+
+
 class CharacterDataset(Dataset):
     def __init__(self, file_path, chunk_len):
         """
