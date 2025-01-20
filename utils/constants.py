@@ -11,6 +11,7 @@ LOADER_TYPE = {
     "shakespeare": "shakespeare",
     "mnist": "mnist",
     "celeba": "celeba",
+    "fakenewsnet": "fakenewsnet",
 }
 
 EXTENSIONS = {
@@ -22,6 +23,7 @@ EXTENSIONS = {
     "shakespeare": ".txt",
     "mnist" : ".pkl",
     "celeba" : ".pkl",
+    "fakenewsnet": ".pkl"
 }
 
 AGGREGATOR_TYPE = {

@@ -146,7 +146,6 @@ class CelebaCNN(nn.Module):
         return test_tensor.view(-1).shape[0]  # Return the size of the flattened feature map
 
 
-
 def getCelebaCNN(n_classes):
     """
     creates VGG11 model with `n_classes` outputs
@@ -156,6 +155,125 @@ def getCelebaCNN(n_classes):
     model = CelebaCNN(n_classes)
     # model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
 
+    return model
+
+
+# class FakenewsnetCNN(nn.Module):
+#     def __init__(self, num_classes=1):  # Binary classification, so 1 output
+#         super(FakenewsnetCNN, self).__init__()
+        
+#         # Convolutional layers with batch normalization
+#         self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=5, stride=1, padding=2)  # 1 input channel, 16 output channels
+#         self.conv1_bn = nn.BatchNorm1d(16)
+        
+#         self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=2)
+#         self.conv2_bn = nn.BatchNorm1d(32)
+        
+#         self.conv3 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=5, stride=1, padding=2)
+#         self.conv3_bn = nn.BatchNorm1d(64)
+        
+#         # Max pooling layer
+#         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+#         # Calculate the flattened size for the fully connected layer
+#         self.fc_input_size =  64 * 96 # self._get_fc_input_size()
+        
+#         # Fully connected layers
+#         self.fc1 = nn.Linear(self.fc_input_size, 256)  # Fully connected layer after flattening
+#         self.fc2 = nn.Linear(256, num_classes)  # Final output layer
+
+#     def forward(self, x):
+#         # print(f"Input shape: {x.shape}")
+        
+#         # Apply convolutional layers with ReLU activation and max-pooling
+#         x = self.pool(F.relu(self.conv1_bn(self.conv1(x))))  # Conv1 -> BatchNorm -> ReLU -> Pooling
+#         # print(f"Shape after conv1: {x.shape}")
+        
+#         x = self.pool(F.relu(self.conv2_bn(self.conv2(x))))  # Conv2 -> BatchNorm -> ReLU -> Pooling
+#         # print(f"Shape after conv2: {x.shape}")
+        
+#         x = self.pool(F.relu(self.conv3_bn(self.conv3(x))))  # Conv3 -> BatchNorm -> ReLU -> Pooling
+#         # print(f"Shape after conv3: {x.shape}")
+        
+#         # Flatten the tensor for fully connected layers
+#         x = x.view(-1, self.fc_input_size)
+#         # print(f"Shape after flattening: {x.shape}")
+        
+#         # Pass through fully connected layers
+#         x = F.relu(self.fc1(x))
+#         # print(f"Shape after fc1: {x.shape}")
+        
+#         x = self.fc2(x)
+#         # print(f"Shape before sigmoid: {x.shape}")
+        
+#         # Apply sigmoid for binary classification
+#         x = torch.sigmoid(x)
+#         # print(f"Output shape after sigmoid: {x.shape}")
+        
+#         return x
+
+#     def _get_fc_input_size(self):
+#         # Pass a dummy tensor with the expected input shape to calculate the flattened size
+#         test_tensor = torch.zeros(1, 1, 728)  # Shape: (batch_size=1, channels=1, embedding_length=728)
+#         test_tensor = self.pool(F.relu(self.conv1(test_tensor)))
+#         test_tensor = self.pool(F.relu(self.conv2(test_tensor)))
+#         test_tensor = self.pool(F.relu(self.conv3(test_tensor)))
+#         return test_tensor.view(-1).shape[0]  # Flatten the tensor and return the size
+
+
+class FakenewsnetCNN(nn.Module):
+    def __init__(self, num_classes=1):  # Binary classification, so 1 output
+        super(FakenewsnetCNN, self).__init__()
+        
+        # Convolutional layers with batch normalization
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=5, stride=1, padding=2)  # 1 input channel, 16 output channels
+        self.conv1_bn = nn.BatchNorm1d(16)
+        
+        self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=2)
+        self.conv2_bn = nn.BatchNorm1d(32)
+        
+        self.conv3 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=5, stride=1, padding=2)
+        self.conv3_bn = nn.BatchNorm1d(64)
+        
+        # Max pooling layer
+        self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        # Calculate the flattened size for the fully connected layer
+        self.fc_input_size =  64 * 96  # self._get_fc_input_size()
+        
+        # Fully connected layers
+        self.fc1 = nn.Linear(self.fc_input_size, 256)  # Fully connected layer after flattening
+        self.fc2 = nn.Linear(256, num_classes)  # Final output layer
+
+    def forward(self, x):
+        # Check and force input to be float32
+        if x.dtype != torch.float32:
+            x = x.float()  # Convert to float32 if it's not already
+
+        # Apply convolutional layers with ReLU activation and max-pooling
+        x = self.pool(F.relu(self.conv1_bn(self.conv1(x))))  # Conv1 -> BatchNorm -> ReLU -> Pooling
+        x = self.pool(F.relu(self.conv2_bn(self.conv2(x))))  # Conv2 -> BatchNorm -> ReLU -> Pooling
+        x = self.pool(F.relu(self.conv3_bn(self.conv3(x))))  # Conv3 -> BatchNorm -> ReLU -> Pooling
+        
+        # Flatten the tensor for fully connected layers
+        x = x.view(-1, self.fc_input_size)
+        
+        # Pass through fully connected layers
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        
+        # Apply sigmoid for binary classification
+        x = torch.sigmoid(x)
+        
+        return x
+
+def getFakenewsnetCNN(n_classes):
+    """
+    creates VGG11 model with `n_classes` outputs
+    :param n_classes:
+    :return: nn.Module
+    """
+    model = FakenewsnetCNN(n_classes)
     return model
 
 class NextCharacterLSTM(nn.Module):

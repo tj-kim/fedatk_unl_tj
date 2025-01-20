@@ -283,15 +283,34 @@ class Adv_NN(Personalized_NN):
             else: # Other norms (mostly 2 norm)
                 delta = self.x_adv - self.x_orig
 
-                # Assume x and x_adv are batched tensors where the first dimension is
-                # a batch dimension
-                mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
+                # # Assume x and x_adv are batched tensors where the first dimension is
+                # # a batch dimension
+                # mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
 
-                scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
-                scaling_factor[mask] = eps
+                # scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
+                # scaling_factor[mask] = eps
 
-                # .view() assumes batched images as a 4D Tensor
-                delta *= eps / scaling_factor.view(-1, 1, 1, 1)
+                # # .view() assumes batched images as a 4D Tensor
+                # delta *= eps / scaling_factor.view(-1, 1, 1, 1)
+
+                # For 1D input like text embeddings [batch_size, 1, embedding_dim]
+                if len(delta.shape) == 3:  # Check if it's 1D input (batch, 1, embedding_dim)
+                    # Calculate the norm for each example (L2 norm along the embedding dimension)
+                    scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
+                    
+                    # Apply the scaling factor for the perturbation
+                    delta *= eps / scaling_factor.view(-1, 1, 1)
+
+                # If the input is 2D (like an image with shape [batch_size, channels, height, width]), handle it accordingly
+                elif len(delta.shape) == 4:  # 2D input [batch_size, channels, height, width]
+
+                    mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
+
+                    scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
+                    scaling_factor[mask] = eps
+
+                    # .view() assumes batched images as a 4D Tensor
+                    delta *= eps / scaling_factor.view(-1, 1, 1, 1)
 
                 self.x_adv = self.x_orig + delta
             

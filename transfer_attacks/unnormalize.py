@@ -10,7 +10,7 @@ def unnormalize_adv(normed, dataset_name):
     elif dataset_name == "celeba":
         return unnormalize_celeba(normed)
 
-    return 
+    return normed
 
 # CIFAR10 dataset unnormalize as it comes out of the iter
 def unnormalize_cifar10(normed):

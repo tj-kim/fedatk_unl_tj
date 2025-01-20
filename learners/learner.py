@@ -143,6 +143,7 @@ class Learner:
         else:
             loss = loss_vec.mean()
 
+        # loss.backward(retain_graph=True) # turn this off for cifar and other datasets 
         loss.backward()
 
         self.optimizer.step()
@@ -189,6 +190,7 @@ class Learner:
                 loss = (loss_vec.T @ weights[indices]) / loss_vec.size(0)
             else:
                 loss = loss_vec.mean()
+            # loss.backward(retain_graph=True) # delete later
             loss.backward()
 
             self.optimizer.step()

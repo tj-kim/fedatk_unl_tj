@@ -96,6 +96,12 @@ def get_learner(
         # model = get_mobilenet(n_classes=16).to(device)
         model = getCelebaCNN(n_classes=16).to(device)
         is_binary_classification = False
+    elif name == "fakenewsnet":
+        # criterion = nn.BCEWithLogitsLoss(reduction="none").to(device)
+        criterion = nn.CrossEntropyLoss(reduction="none").to(device)
+        metric = accuracy
+        model = getFakenewsnetCNN(n_classes=2).to(device)
+        is_binary_classification = False
     elif name == "shakespeare":
         all_characters = string.printable
         labels_weight = torch.ones(len(all_characters), device=device)
@@ -234,8 +240,6 @@ def get_loaders(type_, root_path, batch_size, is_validation, client_limit = None
 
     train_iterators, val_iterators, test_iterators = [], [], []
 
-
-
     for task_id, task_dir in enumerate(tqdm(os.listdir(root_path))):
         task_data_path = os.path.join(root_path, task_dir)
 
@@ -312,6 +316,8 @@ def get_loader(type_, path, batch_size, train, inputs=None, targets=None):
         dataset = SubMNIST(path, mnist_data=inputs, mnist_targets=targets)
     elif type_ == "celeba":
         dataset = SubCelebA(path, celeba_data=inputs, celeba_targets=targets)
+    elif type_ == 'fakenewsnet':
+        dataset = SubFakeNewsNetwork(path, data = inputs, targets=targets)
     else:
         raise NotImplementedError(f"{type_} not recognized type; possible are {list(LOADER_TYPE.keys())}")
 

@@ -459,12 +459,12 @@ class SubFakeNewsNetwork(Dataset):
         :param transform:
         """
         with open(path, "rb") as f:
-            imported_data = pickle.load(f)
+            data = pickle.load(f)
 
         self.indices = None 
             
-        self.data = self.data[self.indices]
-        self.targets = self.targets[self.indices]
+        self.data = torch.tensor(np.array([np.array(point[0]) for point in data])).unsqueeze(1) # adding channels (# points, 1, embedding length)
+        self.targets = torch.tensor(np.array([point[1] for point in data]))
 
     def __len__(self):
         return len(self.data)
