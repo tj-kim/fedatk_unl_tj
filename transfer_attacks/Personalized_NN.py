@@ -337,7 +337,14 @@ class Adv_NN(Personalized_NN):
     
         data_x, data_y = self.dataloader.load_batch(batch_size, mode=mode)
         
-        self.x_orig  = data_x.reshape(batch_size, data_x.shape[1],data_x.shape[2],data_x.shape[3])
+        if len(data_x.shape) == 3:
+            self.x_orig  = data_x.reshape(batch_size, data_x.shape[1],data_x.shape[2])
+        elif len(data_x.shape) == 4:
+            self.x_orig  = data_x.reshape(batch_size, data_x.shape[1],data_x.shape[2],data_x.shape[3]) # redundant and comment out 
+        else:
+            raise ValueError('Dimension of X data is neither 3 nor 4')
+
+        # self.x_orig  = data_x.reshape(batch_size, data_x.shape[1],data_x.shape[2],data_x.shape[3]) # redundant and comment out 
         self.y_orig = data_y.type(torch.LongTensor)
         
         if torch.cuda.is_available():
@@ -384,15 +391,33 @@ class Adv_NN(Personalized_NN):
             else: # Other norms (mostly 2 norm)
                 delta = self.x_adv - self.x_orig
 
-                # Assume x and x_adv are batched tensors where the first dimension is
-                # a batch dimension
-                mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
+                # # Assume x and x_adv are batched tensors where the first dimension is
+                # # a batch dimension
+                # mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
 
-                scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
-                scaling_factor[mask] = eps
+                # scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
+                # scaling_factor[mask] = eps
 
-                # .view() assumes batched images as a 4D Tensor
-                delta *= eps / scaling_factor.view(-1, 1, 1, 1)
+                # # .view() assumes batched images as a 4D Tensor
+                # delta *= eps / scaling_factor.view(-1, 1, 1, 1)
+
+                if len(delta.shape) == 3:  # Check if it's 1D input (batch, 1, embedding_dim)
+                    # Calculate the norm for each example (L2 norm along the embedding dimension)
+                    scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
+                    
+                    # Apply the scaling factor for the perturbation
+                    delta *= eps / scaling_factor.view(-1, 1, 1)
+
+                # If the input is 2D (like an image with shape [batch_size, channels, height, width]), handle it accordingly
+                elif len(delta.shape) == 4:  # 2D input [batch_size, channels, height, width]
+
+                    mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
+
+                    scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
+                    scaling_factor[mask] = eps
+
+                    # .view() assumes batched images as a 4D Tensor
+                    delta *= eps / scaling_factor.view(-1, 1, 1, 1)
 
                 self.x_adv = self.x_orig + delta
             
@@ -476,7 +501,7 @@ class Adv_NN(Personalized_NN):
         self.adv_acc = (self.output_adv == self.y_orig).float().sum()/batch_size
         
         # Add Perturbation Distance (L2 norm) - across each input
-        self.norm = torch.norm(torch.sub(self.x_orig, self.x_adv, alpha=1),dim=(2,3))
+        # self.norm = torch.norm(torch.sub(self.x_orig, self.x_adv, alpha=1),dim=(2,3))
 
         # Print Relevant Information
         if print_info:
