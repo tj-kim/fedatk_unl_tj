@@ -336,7 +336,7 @@ def initialize_logsadv(num_models):
         logs_adv += [adv_dict]
     return logs_adv
 
-def get_adv_acc(aggregator, model, batch_size = 500):
+def get_adv_acc(aggregator, model, batch_size = 500, eps = 4):
     num_clients = len(aggregator.clients)
 
     # logs_adv = generate_logs_adv(num_models=num_clients)
@@ -364,7 +364,7 @@ def get_adv_acc(aggregator, model, batch_size = 500):
         t1.atk_params = PGD_Params()
         t1.atk_params.set_params(batch_size=batch_size, iteration = 10, target = -1,
                                 x_val_min = torch.min(data_x), x_val_max = torch.max(data_x),
-                                step_size = 0.05, step_norm = "inf", eps = 4, eps_norm = 2)
+                                step_size = 0.05, step_norm = "inf", eps = eps, eps_norm = 2)
         t1.generate_advNN(c_id)
         t1.generate_xadv(atk_type="pgd")
         t1.send_to_victims(victim_idxs)
