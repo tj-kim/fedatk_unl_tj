@@ -374,7 +374,6 @@ def get_adv_acc(aggregator, model, batch_size = 500, eps = 4):
 
         del dataloader
         del t1
-        break
 
     del data_x
     del model, aggregator
@@ -406,18 +405,35 @@ def pull_model_from_agg(aggregator):
 # Calculate uploaded model and download to attacker clients in aggregator
 # Current version working under the assumption of close to convergence (no benign client pushback)
 def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
+    with torch.no_grad():
+        atk_model = copy.deepcopy(model_global)
+        inject_state_dict = model_inject.state_dict(keep_vars=False)
+        global_state_dict = model_global.state_dict(keep_vars=False)
+        return_state_dict = atk_model.state_dict(keep_vars=False)
+        total_weight = weight_scale * weight_scale_2
 
-    atk_model = copy.deepcopy(model_global)
-    inject_state_dict = model_inject.state_dict(keep_vars=True)
-    global_state_dict = model_global.state_dict(keep_vars=True)
-    return_state_dict = atk_model.state_dict(keep_vars=True)
-    total_weight = weight_scale * weight_scale_2
+        for key in keys:
+            diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
+            return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
 
-    for key in keys:
-        diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
-        return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
+        atk_model.load_state_dict(return_state_dict)
+        return atk_model
 
-    return atk_model
+# def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
+#     inject_state_dict = model_inject.state_dict(keep_vars=False)  # No gradients needed
+#     global_state_dict = model_global.state_dict(keep_vars=False)
+#     atk_state_dict = {}
+
+#     total_weight = weight_scale * weight_scale_2
+
+#     for key in keys:
+#         diff = inject_state_dict[key] - global_state_dict[key]
+#         atk_state_dict[key] = total_weight * diff + global_state_dict[key]
+
+#     # Create a new model and load updated state_dict
+#     atk_model = copy.deepcopy(model_global)
+#     atk_model.load_state_dict(atk_state_dict)
+#     return atk_model
 
 # Clone data from attack model to client model
 def clone_model_weights(model_source, model_target, keys):
@@ -446,12 +462,16 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
     for a_id in adv_id:
         benign_id.remove(a_id)
         temp_atk_model = calc_atk_model(model_inject, model_global, keys, weight_scale[a_id], weight_scale_2)
-        aggregator.clients[a_id].learners_ensemble[0].model = copy.deepcopy(temp_atk_model)
+        aggregator.clients[a_id].learners_ensemble[0].model.cpu()
+        del aggregator.clients[a_id].learners_ensemble[0].model
+        aggregator.clients[a_id].learners_ensemble[0].model = temp_atk_model
+        del temp_atk_model
+        gc.collect()
+        torch.cuda.empty_cache()
 
-    print(f"  Memory allocated - 1 pre step: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
+
     for c_id in benign_id:
         aggregator.clients[c_id].step()
-        print(f"  Memory allocated - 1-x stepping...: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
 
     # Aggregate model and download
     for learner_id, learner in enumerate(aggregator.global_learners_ensemble):
@@ -475,14 +495,12 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
                 if dump_flag
                 else None
             )
-            print(f"  Memory allocated - 2-1 pre-byz: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
             byzantine_robust_aggregate_median_with_threshold(
                 learners, 
                 learner, 
                 threshold = median_threshold,
                 dump_path=dump_path
             )
-            print(f"  Memory allocated - 2-2 post-byz: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
         elif aggregation_op == 'trimmed_mean':
             dump_path = (
                 os.path.join(aggregator.dump_path, f"round{aggregator.c_round}_tm.pkl")

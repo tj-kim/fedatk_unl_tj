@@ -1,5 +1,5 @@
 import torch
-
+import gc
 
 class Learner:
     """
@@ -171,6 +171,9 @@ class Learner:
         global_metric = 0.
         n_samples = 0
 
+        if weights is not None:
+            weights = weights.to(self.device)
+
         for x, y, indices in iterator:
             x = x.to(self.device).type(torch.float32)
             y = y.to(self.device)
@@ -183,20 +186,33 @@ class Learner:
             self.optimizer.zero_grad()
 
             y_pred = self.model(x)
-
             loss_vec = self.criterion(y_pred, y)
             if weights is not None:
-                weights = weights.to(self.device)
+                # weights = weights.to(self.device)
                 loss = (loss_vec.T @ weights[indices]) / loss_vec.size(0)
             else:
                 loss = loss_vec.mean()
             # loss.backward(retain_graph=True) # delete later
-            loss.backward()
+            loss.backward(retain_graph=False)
 
             self.optimizer.step()
 
-            global_loss += loss.detach() * loss_vec.size(0)
-            global_metric += self.metric(y_pred, y).detach()
+            # global_loss += loss.detach() * loss_vec.size(0)
+            # global_metric += self.metric(y_pred, y).detach()
+            with torch.no_grad():
+                global_loss += loss.item() * loss_vec.size(0)
+                global_metric += self.metric(y_pred, y).item()
+
+        # trying to clean memory
+        # Clean up to release memory
+            del x, y, y_pred, loss, loss_vec, indices
+            # gc.collect()
+            # torch.cuda.empty_cache()
+
+        if weights is not None:
+            del weights
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return global_loss / n_samples, global_metric / n_samples
 
