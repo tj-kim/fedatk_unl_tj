@@ -5,6 +5,7 @@ import pdb
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
+import copy
 
 import numpy as np
 import numpy.linalg as LA

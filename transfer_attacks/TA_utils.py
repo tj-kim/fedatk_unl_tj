@@ -174,6 +174,115 @@ def dummy_aggregator(args_, num_user=80):
 
     return aggregator, clients
 
+def copy_aggregator(aggregator_og, args_):
+
+    num_user = len(aggregator_og.clients)
+
+    torch.manual_seed(args_.seed)
+
+    data_dir = get_data_dir(args_.experiment)
+
+    if "logs_root" in args_:
+        logs_root = args_.logs_root
+    else:
+        logs_root = os.path.join("logs", args_to_string(args_))
+
+    train_iterators = []
+    val_iterators = []
+    test_iterators = []
+    client_learners_ensemble = copy.deepcopy(aggregator_og.clients[0].learners_ensemble)
+
+    for client in aggregator_og.clients:
+        train_iterators += [copy.deepcopy(client.train_iterator)]
+        val_iterators += [copy.deepcopy(client.val_iterator)]
+        test_iterators += [copy.deepcopy(client.test_iterator)]
+
+    clients_temp = init_clients_rip_iterators(
+        args_,
+        train_iterators, 
+        val_iterators, 
+        test_iterators,
+        client_learners_ensemble,
+        logs_root=os.path.join(logs_root, "train"),
+        client_limit = num_user
+    )
+
+    clients = clients_temp[:num_user]
+    test_clients = clients
+
+    logs_path = os.path.join(logs_root, "train", "global")
+    os.makedirs(logs_path, exist_ok=True)
+    global_train_logger = SummaryWriter(logs_path)
+
+    logs_path = os.path.join(logs_root, "test", "global")
+    os.makedirs(logs_path, exist_ok=True)
+    global_test_logger = SummaryWriter(logs_path)
+
+    if args_.decentralized:
+        aggregator_type = 'decentralized'
+    else:
+        aggregator_type = AGGREGATOR_TYPE[args_.method]
+
+    aggregator =\
+        get_aggregator(
+            aggregator_type=aggregator_type,
+            clients=clients,
+            global_learners_ensemble=copy.deepcopy(aggregator_og.global_learners_ensemble),
+            lr_lambda=args_.lr_lambda,
+            lr=args_.lr,
+            q=args_.q,
+            mu=args_.mu,
+            communication_probability=args_.communication_probability,
+            sampling_rate=args_.sampling_rate,
+            log_freq=args_.log_freq,
+            global_train_logger=global_train_logger,
+            global_test_logger=global_test_logger,
+            test_clients=test_clients,
+            verbose=args_.verbose,
+            seed=args_.seed
+        )
+
+    aggregator.update_clients()
+
+    return aggregator
+
+def init_clients_rip_iterators(args_, train_iterators, val_iterators, test_iterators, learners_ensemble, 
+                         logs_root, client_limit = None):
+    """
+    initialize clients from data folders
+    :param args_:
+    :param root_path: path to directory containing data folders
+    :param logs_root: path to logs root
+    :return: List[Client]
+    """
+
+    clients_ = []
+    for task_id, (train_iterator, val_iterator, test_iterator) in \
+            enumerate(tqdm(zip(train_iterators, val_iterators, test_iterators), total=len(train_iterators))):
+
+        if train_iterator is None or test_iterator is None:
+            continue
+
+        logs_path = os.path.join(logs_root, "task_{}".format(task_id))
+        os.makedirs(logs_path, exist_ok=True)
+        logger = SummaryWriter(logs_path)
+
+        client = get_client(
+            client_type=CLIENT_TYPE[args_.method],
+            learners_ensemble=learners_ensemble,
+            q=args_.q,
+            train_iterator=train_iterator,
+            val_iterator=val_iterator,
+            test_iterator=test_iterator,
+            logger=logger,
+            local_steps=args_.local_steps,
+            tune_locally=args_.locally_tune_clients
+        )
+
+        clients_.append(client)
+
+    return clients_
+
 def dummy_aggregator_distmec(args_, num_user=80):
 
     torch.manual_seed(args_.seed)

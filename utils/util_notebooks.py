@@ -343,11 +343,12 @@ def get_adv_acc(aggregator, model, batch_size = 500, eps = 4):
 
     # Dataloader for datax
     data_x = []
-    daniloader = aggregator.clients[0].val_iterator
+    # daniloader = aggregator.clients[0].val_iterator
+    daniloader = aggregator.clients[0].test_iterator
     for (x,y,idx) in daniloader.dataset:
         data_x.append(x)
 
-    data_x = torch.stack(data_x)
+    data_x = torch.stack(data_x).detach().cuda()
     # victim_idxs = range(num_clients)
 
     # Save matrix
@@ -368,8 +369,16 @@ def get_adv_acc(aggregator, model, batch_size = 500, eps = 4):
         t1.generate_advNN(c_id)
         t1.generate_xadv(atk_type="pgd")
         t1.send_to_victims(victim_idxs)
-        test_acc_save[c_id] = t1.orig_acc_transfers[0]
-        adv_acc_save[c_id] = t1.adv_acc_transfers[0]
+        test_acc_save[c_id] = copy.deepcopy(t1.orig_acc_transfers[0])
+        adv_acc_save[c_id] = copy.deepcopy(t1.adv_acc_transfers[0])
+
+        del dataloader
+        del t1
+        break
+
+    del data_x
+    del model, aggregator
+    torch.cuda.empty_cache()
 
     return test_acc_save, adv_acc_save 
 
@@ -392,6 +401,8 @@ def pull_model_from_agg(aggregator):
 #   BELOW IS ARU INJECTION STUFF
 ########
 
+
+
 # Calculate uploaded model and download to attacker clients in aggregator
 # Current version working under the assumption of close to convergence (no benign client pushback)
 def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
@@ -408,13 +419,27 @@ def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_
 
     return atk_model
 
+# Clone data from attack model to client model
+def clone_model_weights(model_source, model_target, keys):
+    target_state_dict = model_target.state_dict(keep_vars=True)
+    source_state_dict = model_source.state_dict(keep_vars=True)
+    
+    for key in keys:
+        target_state_dict[key].data = source_state_dict[key].data.clone()
+
+    return
+
 # Expand aggregator.mix() function
-def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=False, aggregation_op = None, tm_beta = 0.05):
+def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=False, aggregation_op = None, tm_beta = 0.05, median_threshold = None):
     weight_scale = 1/aggregator.clients_weights
     model_global = aggregator.global_learners_ensemble[0].model
 
     if aggregation_op == None:
         aggregation_op = aggregator.aggregation_op
+        
+    # Based on aggregation methods change weight scale
+    if aggregation_op == "median" or aggregation_op == "krum":
+        weight_scale = np.ones(weight_scale.shape)
 
     # Give adversarial clients boosted models and train regular clients 1 round
     benign_id = list(range(len(aggregator.clients)))
@@ -423,8 +448,10 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
         temp_atk_model = calc_atk_model(model_inject, model_global, keys, weight_scale[a_id], weight_scale_2)
         aggregator.clients[a_id].learners_ensemble[0].model = copy.deepcopy(temp_atk_model)
 
+    print(f"  Memory allocated - 1 pre step: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
     for c_id in benign_id:
         aggregator.clients[c_id].step()
+        print(f"  Memory allocated - 1-x stepping...: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
 
     # Aggregate model and download
     for learner_id, learner in enumerate(aggregator.global_learners_ensemble):
@@ -442,6 +469,20 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
                 learner, 
                 dump_path=dump_path
             )
+        elif aggregation_op == 'median_sublayers':
+            dump_path = (
+                os.path.join(aggregator.dump_path, f"round{aggregator.c_round}_median_sublayers.pkl") 
+                if dump_flag
+                else None
+            )
+            print(f"  Memory allocated - 2-1 pre-byz: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
+            byzantine_robust_aggregate_median_with_threshold(
+                learners, 
+                learner, 
+                threshold = median_threshold,
+                dump_path=dump_path
+            )
+            print(f"  Memory allocated - 2-2 post-byz: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
         elif aggregation_op == 'trimmed_mean':
             dump_path = (
                 os.path.join(aggregator.dump_path, f"round{aggregator.c_round}_tm.pkl")
@@ -489,30 +530,4 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
     # if aggregator.c_round % aggregator.log_freq == 0:
     #     aggregator.write_logs()
     return 
-
-# Calculate uploaded model and download to attacker clients in aggregator
-# Current version working under the assumption of close to convergence (no benign client pushback)
-def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
-
-    atk_model = copy.deepcopy(model_global)
-    inject_state_dict = model_inject.state_dict(keep_vars=True)
-    global_state_dict = model_global.state_dict(keep_vars=True)
-    return_state_dict = atk_model.state_dict(keep_vars=True)
-    total_weight = weight_scale * weight_scale_2
-
-    for key in keys:
-        diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
-        return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
-
-    return atk_model
-
-# Clone data from attack model to client model
-def clone_model_weights(model_source, model_target, keys):
-    target_state_dict = model_target.state_dict(keep_vars=True)
-    source_state_dict = model_source.state_dict(keep_vars=True)
-    
-    for key in keys:
-        target_state_dict[key].data = source_state_dict[key].data.clone()
-
-    return
 

@@ -79,7 +79,8 @@ class Transferer():
         
         
         self.advNN_idx = client_idx
-        self.advNN = copy.deepcopy(Adv_NN(self.models_list[client_idx], self.dataloader))
+        # self.advNN = copy.deepcopy(Adv_NN(self.models_list[client_idx], self.dataloader))
+        self.advNN = Adv_NN(self.models_list[client_idx], self.dataloader)
         
         return
     
@@ -113,7 +114,8 @@ class Transferer():
         self.victims = {}
     
         for i in self.victim_idxs:
-            self.victims[i] = copy.deepcopy(Personalized_NN(self.models_list[i]))
+            # self.victims[i] = copy.deepcopy(Personalized_NN(self.models_list[i]))
+            self.victims[i] = Personalized_NN(self.models_list[i])
     
             
     def send_to_victims(self, client_idxs, target_labels = None):

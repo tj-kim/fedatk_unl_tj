@@ -13,6 +13,7 @@ import os
 import pickle
 from torch.autograd import Variable
 import copy
+import gc
 
 # from transfer_attacks.utils import cuda
 from transfer_attacks.projected_gradient_descent import *
@@ -54,10 +55,11 @@ class Personalized_NN(nn.Module):
         
     def forward(self,x):
         
-        if torch.cuda.is_available():
-            x = x.cuda()
+        # if torch.cuda.is_available():
+        #     x = x.cuda()
         
         x = self.trained_network.forward(x)
+        # x = x.cpu()
         
         return x
     
@@ -91,15 +93,22 @@ class Personalized_NN(nn.Module):
         
         # Cuda Availability
         if torch.cuda.is_available():
-            (y_orig, y_adv) = (y_orig.cuda(), y_adv.cuda())
+            pass
+            # (y_orig, y_adv) = (y_orig.cuda(), y_adv.cuda())
         
         batch_size = y_orig.shape[0]
         
         # Forward Two Input Types
-        h_adv = self.forward(x_adv)
-        h_orig = self.forward(x_orig)
+        with torch.no_grad():
+            h_adv = self.forward(x_adv.cuda()).cpu()
+            h_orig = self.forward(x_orig.cuda()).cpu()
         h_adv_category = torch.argmax(h_adv,dim = 1)
         h_orig_category = torch.argmax(h_orig,dim = 1)
+
+        true_labels = true_labels.cpu()
+        y_orig = y_orig.cpu()
+        y_adv = y_adv.cpu()
+        true_labels = true_labels.cpu()
         
         # Record Different Parameters
         self.orig_test_acc = (h_orig_category == true_labels).float().sum()/batch_size
@@ -209,60 +218,61 @@ class Adv_NN(Personalized_NN):
             
         return 
     
-    def pgd_sub(self, atk_params, x_in, y_in, x_base = None, y_targets = None):
+    def pgd_sub(self, atk_params, x_in, y_in, x_base=None, y_targets=None):
         """
         Perform PGD without post-attack analysis
         """
         self.eval()
-        
+
         # Import attack parameters
         eps_norm = atk_params.eps_norm
         batch_size = atk_params.batch_size
-        eps= atk_params.eps
-        alpha= atk_params.step_size
-        iteration= atk_params.iteration
-        x_val_min= atk_params.x_val_min
-        x_val_max= atk_params.x_val_max
-        
+        eps = atk_params.eps
+        alpha = atk_params.step_size
+        iteration = atk_params.iteration
+        x_val_min = atk_params.x_val_min
+        x_val_max = atk_params.x_val_max
+
         # Load data to perturb
-    
-        self.x_orig  = x_in
+        self.x_orig = x_in
         self.y_orig = y_in
-        
-        if torch.cuda.is_available():
-            self.y_orig = self.y_orig.cuda()
-        
+
+        # Check if CUDA is available and move tensors to GPU
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.x_orig = self.x_orig.to(device)
+        self.y_orig = self.y_orig.to(device)
+
         if y_targets is not None:
-            target = 1 # just setting it to be above -1 check 
+            target = 1  # just setting it to be above -1 check
         else:
-            target= atk_params.target
+            target = atk_params.target
             self.target = target
-            
-        
+
         # Add random noise within norm ball for start (FOR BATCH)
-        noise_unscaled = torch.rand(self.x_orig.shape)
+        # noise_unscaled = torch.rand(self.x_orig.shape).to(device)
+        noise_unscaled = torch.rand(self.x_orig.shape, device=device).detach()
+
         if eps_norm == 'inf':
-            # Workaround as PyTorch doesn't have elementwise clip
             norm_scale = torch.ones_like(noise_unscaled[0]).norm(float('inf'))
         else:
-            norm_scale = torch.ones_like(noise_unscaled[0]).norm(eps_norm)                                                          
-        noise_scaled = (noise_unscaled*eps/norm_scale).cuda()
-        
-        self.x_adv = Variable(self.x_orig+noise_scaled, requires_grad=True)
-        
+            norm_scale = torch.ones_like(noise_unscaled[0]).norm(eps_norm)
+        noise_scaled = (noise_unscaled * eps / norm_scale)
+
+        self.x_adv = Variable(self.x_orig + noise_scaled, requires_grad=True)
+
         for i in range(iteration):
-            
             h_adv = self.forward(self.x_adv)
-            
+
             # Loss function based on target
             if target > -1:
                 if y_targets is not None:
                     assert len(self.y_orig) == len(y_targets)
-                    target_tensor = torch.LongTensor(y_targets)
-                    target_tensor = Variable(cuda(target_tensor, self.cuda), requires_grad=False)
+                    target_tensor = torch.LongTensor(y_targets).to(device)
+                    target_tensor = Variable(target_tensor, requires_grad=False)
                 else:
-                    target_tensor = torch.LongTensor(self.y_orig.size()).fill_(target) # have to shift this 
-                    target_tensor = Variable(cuda(target_tensor, self.cuda), requires_grad=False)
+                    target_tensor = torch.LongTensor(self.y_orig.size()).fill_(target).to(device)
+                    target_tensor = Variable(target_tensor, requires_grad=False)
+
                 cost = self.criterion(h_adv, target_tensor)
             else:
                 cost = -self.criterion(h_adv, self.y_orig)
@@ -271,52 +281,46 @@ class Adv_NN(Personalized_NN):
 
             if self.x_adv.grad is not None:
                 self.x_adv.grad.data.fill_(0)
-            cost.backward()
+            # cost.backward()
+            cost.backward(retain_graph=False)
 
             self.x_adv.grad.sign_()
-            self.x_adv = self.x_adv - alpha*self.x_adv.grad
-            
-            
+            self.x_adv = self.x_adv - alpha * self.x_adv.grad
+
+            # Clip and ensure the adversarial input stays within bounds
             if eps_norm == 'inf':
-                # Workaround as PyTorch doesn't have elementwise clip
                 self.x_adv = torch.max(torch.min(self.x_adv, self.x_orig + eps), self.x_orig - eps)
-            else: # Other norms (mostly 2 norm)
-                delta = self.x_adv - self.x_orig
-
-                # # Assume x and x_adv are batched tensors where the first dimension is
-                # # a batch dimension
-                # mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
-
-                # scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
-                # scaling_factor[mask] = eps
-
-                # # .view() assumes batched images as a 4D Tensor
-                # delta *= eps / scaling_factor.view(-1, 1, 1, 1)
+            else:
+                delta = (self.x_adv - self.x_orig).detach()
 
                 # For 1D input like text embeddings [batch_size, 1, embedding_dim]
                 if len(delta.shape) == 3:  # Check if it's 1D input (batch, 1, embedding_dim)
-                    # Calculate the norm for each example (L2 norm along the embedding dimension)
                     scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
-                    
-                    # Apply the scaling factor for the perturbation
                     delta *= eps / scaling_factor.view(-1, 1, 1)
 
-                # If the input is 2D (like an image with shape [batch_size, channels, height, width]), handle it accordingly
+                # If the input is 2D (like an image with shape [batch_size, channels, height, width])
                 elif len(delta.shape) == 4:  # 2D input [batch_size, channels, height, width]
-
                     mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
 
                     scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
                     scaling_factor[mask] = eps
 
-                    # .view() assumes batched images as a 4D Tensor
                     delta *= eps / scaling_factor.view(-1, 1, 1, 1)
 
                 self.x_adv = self.x_orig + delta
-            
+
             self.x_adv = torch.clamp(self.x_adv, x_val_min, x_val_max)
-            self.x_adv = Variable(self.x_adv.data, requires_grad=True)
-        
+            # self.x_adv = Variable(self.x_adv.data, requires_grad=True)
+            self.x_adv = self.x_adv.detach().requires_grad_(True)
+
+        # If needed, move back to CPU only after all computations are done
+        self.x_adv = self.x_adv.detach().cpu()
+        self.x_orig = self.x_orig.detach().cpu()
+        self.y_orig = self.y_orig.detach().cpu()
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
         return
         
     def pgd(self, atk_params, print_info=False, mode='test'):
@@ -347,21 +351,22 @@ class Adv_NN(Personalized_NN):
         # self.x_orig  = data_x.reshape(batch_size, data_x.shape[1],data_x.shape[2],data_x.shape[3]) # redundant and comment out 
         self.y_orig = data_y.type(torch.LongTensor)
         
-        if torch.cuda.is_available():
-            self.y_orig = self.y_orig.cuda()
+        # Check if CUDA is available and move tensors to GPU
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.x_orig = self.x_orig.to(device)
+        self.y_orig = self.y_orig.to(device)
         
         self.target = target
         
         # Add random noise within norm ball for start (FOR BATCH)
-        noise_unscaled = torch.rand(self.x_orig.shape)
+        noise_unscaled = torch.rand(self.x_orig.shape, device=device).detach()
         if eps_norm == 'inf':
-            # Workaround as PyTorch doesn't have elementwise clip
             norm_scale = torch.ones_like(noise_unscaled[0]).norm(float('inf'))
         else:
-            norm_scale = torch.ones_like(noise_unscaled[0]).norm(eps_norm)                                                          
-        noise_scaled = (noise_unscaled*eps/norm_scale).cuda()
-        
-        self.x_adv = Variable(self.x_orig+noise_scaled, requires_grad=True)
+            norm_scale = torch.ones_like(noise_unscaled[0]).norm(eps_norm)
+        noise_scaled = (noise_unscaled * eps / norm_scale)
+
+        self.x_adv = Variable(self.x_orig + noise_scaled, requires_grad=True)
         
         for i in range(iteration):
             
@@ -369,8 +374,8 @@ class Adv_NN(Personalized_NN):
             
             # Loss function based on target
             if target > -1:
-                target_tensor = torch.LongTensor(self.y_orig.size()).fill_(target)
-                target_tensor = Variable(cuda(target_tensor, self.cuda), requires_grad=False)
+                target_tensor = torch.LongTensor(self.y_orig.size()).fill_(target).to(device)
+                target_tensor = Variable(target_tensor, requires_grad=False)
                 cost = self.criterion(h_adv, target_tensor)
             else:
                 cost = -self.criterion(h_adv, self.y_orig)
@@ -379,7 +384,7 @@ class Adv_NN(Personalized_NN):
 
             if self.x_adv.grad is not None:
                 self.x_adv.grad.data.fill_(0)
-            cost.backward()
+            cost.backward(retain_graph=False)
 
             self.x_adv.grad.sign_()
             self.x_adv = self.x_adv - alpha*self.x_adv.grad
@@ -389,17 +394,8 @@ class Adv_NN(Personalized_NN):
                 # Workaround as PyTorch doesn't have elementwise clip
                 self.x_adv = torch.max(torch.min(self.x_adv, self.x_orig + eps), self.x_orig - eps)
             else: # Other norms (mostly 2 norm)
-                delta = self.x_adv - self.x_orig
+                delta = (self.x_adv - self.x_orig).detach()
 
-                # # Assume x and x_adv are batched tensors where the first dimension is
-                # # a batch dimension
-                # mask = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1) <= eps
-
-                # scaling_factor = delta.view(delta.shape[0], -1).norm(eps_norm, dim=1)
-                # scaling_factor[mask] = eps
-
-                # # .view() assumes batched images as a 4D Tensor
-                # delta *= eps / scaling_factor.view(-1, 1, 1, 1)
 
                 if len(delta.shape) == 3:  # Check if it's 1D input (batch, 1, embedding_dim)
                     # Calculate the norm for each example (L2 norm along the embedding dimension)
@@ -422,9 +418,17 @@ class Adv_NN(Personalized_NN):
                 self.x_adv = self.x_orig + delta
             
             self.x_adv = torch.clamp(self.x_adv, x_val_min, x_val_max)
-            self.x_adv = Variable(self.x_adv.data, requires_grad=True)
+            # self.x_adv = Variable(self.x_adv.data, requires_grad=True)
+            self.x_adv = self.x_adv.detach().requires_grad_(True)
         
         self.post_attack(batch_size = batch_size, print_info = print_info)
+
+        self.x_adv = self.x_adv.detach().cpu()
+        self.x_orig = self.x_orig.detach().cpu()
+        self.y_orig = self.y_orig.detach().cpu()
+
+        gc.collect()
+        torch.cuda.empty_cache()
         
         return
         

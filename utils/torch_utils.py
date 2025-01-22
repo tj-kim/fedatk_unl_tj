@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import itertools
+import gc
 
 from collections import defaultdict
 
@@ -358,6 +359,78 @@ def byzantine_robust_aggregate_median(
     if dump_path is not None:
         with open(dump_path, 'wb') as f:
             pickle.dump(sort_indices, f)
+
+def byzantine_robust_aggregate_median_with_threshold(
+        learners,
+        target_learner,
+        threshold = None,
+        weights=None,
+        dump_path=None):
+    """
+    Compute the median or weighted average of learners' parameters based on a threshold and store in target_learner.
+
+    :param learners: List of Learner objects
+    :param target_learner: The global Learner to be updated
+    :param threshold: Number of layers to apply median aggregation; beyond this, apply weighted average
+    :param weights: Tensor of weights for weighted average (default is uniform)
+    :param dump_path: Path to dump sorted indices for debugging (optional)
+    """
+    from collections import defaultdict
+    import torch
+    import warnings
+    import pickle
+
+    if threshold == None:
+        threshold = int(1e6)
+    
+    # Initialize weights
+    if weights is None:
+        n_learners = len(learners)
+        weights = (1 / n_learners) * torch.ones(n_learners, device=learners[0].device)
+    else:
+        weights = weights.to(learners[0].device)
+
+    # Retrieve target model parameters
+    target_state_dict = target_learner.model.state_dict(keep_vars=True)
+
+    # Initialize structures to hold param/grad values
+    param_val = defaultdict(list)
+    sort_indices = list()
+
+    # Loop over all parameters
+    for layer_index, key in enumerate(target_state_dict):
+
+        # Handle only float tensors (model parameters)
+        if target_state_dict[key].data.dtype == torch.float32:
+            # Perform median aggregation for layers within the threshold
+            if layer_index < threshold:
+                for learner in learners:
+                    state_dict = learner.model.state_dict(keep_vars=True)
+                    param_val[key].append(state_dict[key].data.clone())
+                # Median aggregation
+                target_state_dict[key].data, indices = torch.median(torch.stack(param_val[key], dim=0), dim=0)
+                sort_indices.append((key, indices))
+            
+            # Perform weighted average aggregation for layers beyond the threshold
+            else:
+                aggregated_param = torch.zeros_like(target_state_dict[key].data)
+                for learner_id, learner in enumerate(learners):
+                    state_dict = learner.model.state_dict(keep_vars=True)
+                    aggregated_param += weights[learner_id] * state_dict[key].data.clone()
+                target_state_dict[key].data.copy_(aggregated_param)
+
+        else:
+            # For non-float tensors, directly copy the parameter (e.g., buffers)
+            target_state_dict[key].data.fill_(0)
+            for learner in learners:
+                state_dict = learner.model.state_dict()
+                target_state_dict[key].data += state_dict[key].data.clone()
+
+    # Optionally dump indices used for median sorting
+    if dump_path is not None:
+        with open(dump_path, 'wb') as f:
+            pickle.dump(sort_indices, f)
+
 
 def calculate_l2_norm_difference(model1, model2):
     difference = 0.0

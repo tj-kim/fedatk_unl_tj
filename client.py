@@ -4,13 +4,6 @@ from copy import deepcopy
 from utils.torch_utils import *
 
 from transfer_attacks.Personalized_NN import *
-# from transfer_attacks.Params import *
-# from transfer_attacks.Transferer import *
-# from transfer_attacks.Args import *
-# from transfer_attacks.TA_utils import *
-
-# from transfer_attacks.Boundary_Transferer import *
-# from transfer_attacks.projected_gradient_descent import *
 
 from transfer_attacks.Custom_Dataloader import *
 from transfer_attacks.unnormalize import *
@@ -360,7 +353,7 @@ class Adv_MixtureClient(MixtureClient):
         self.atk_params = None
         
         # Make copy of dataset and set aside for adv training
-        self.og_dataloader = deepcopy(self.train_iterator) # Update self.train_loader every iteration
+        self.og_dataloader = self.true_train_iterator # deepcopy(self.train_iterator) # Update self.train_loader every iteration
         
         # Add adversarial client 
         combined_model = self.combine_learners_ensemble()
@@ -511,7 +504,7 @@ class Adv_Client(Client):
         self.atk_params = None
         
         # Make copy of dataset and set aside for adv training
-        self.og_dataloader = deepcopy(self.train_iterator) # Update self.train_loader every iteration
+        self.og_dataloader = self.true_train_iterator # deepcopy(self.train_iterator) # Update self.train_loader every iteration
         
         # Add adversarial client 
         combined_model = self.combine_learners_ensemble()
@@ -585,6 +578,16 @@ class Adv_Client(Client):
         # reassign weights after trained
         self.adv_nn = Adv_NN(self.combine_learners_ensemble(), self.altered_dataloader)
         return
+
+    def del_advnn(self):
+
+        model = self.adv_nn.trained_network.cpu()
+        del model
+        del self.adv_nn
+        self.adv_nn = None
+        gc.collect()
+        torch.cuda.empty_cache()
+        return
     
     def generate_sythetic_data(self, x_data):     
         self.adv_nn.synthetize(x_data.cuda())
@@ -608,38 +611,38 @@ class Adv_Client(Client):
         sample = np.random.choice(a=num_datapoints, size=sample_size)
         x_data = self.adv_nn.dataloader.x_data[sample]
         y_data = self.adv_nn.dataloader.y_data[sample]
-        
-        self.adv_nn.pgd_sub(self.atk_params, x_data.cuda(), y_data.cuda())
+
+        self.adv_nn.pgd_sub(self.atk_params, x_data, y_data)
         x_adv = self.adv_nn.x_adv
-        # y_adv = self.adv_nn.y_adv
         
-        return sample, x_adv, y_data #, y_adv
+        del self.adv_nn.x_adv
+        torch.cuda.empty_cache()
+        
+        return sample, x_adv.detach().cpu(), y_data.detach().cpu()
     
     def assign_advdataset(self):
         # convert dataset to normed and replace specific datapoints
         
+        print(f"  Memory allocated - inside 1 init: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
         # Flush current used dataset with original
         self.train_iterator = deepcopy(self.og_dataloader)
+        print(f"  Memory allocated - inside 2 copy data loader: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
         
         # adversarial datasets loop, adjust normed and push 
         sample_id, x_adv, y_data = self.generate_adversarial_data() # , y_adv removed
         y_record = 0
         
-        y_collect = self.adv_nn.forward(x_adv)
+        y_collect = self.adv_nn.forward(x_adv.cuda()).detach().cpu()
         y_amax_collect = torch.argmax(y_collect,dim = 1)
         
         for i in range(sample_id.shape[0]):
             idx = sample_id[i]
-            x_val_normed = x_adv[i]
-            y_val = y_data[i]
+            x_val_normed = x_adv[i].detach().cpu()
+            y_val = y_data[i].detach().cpu()
             
             num_classes = max(y_data)
             
-            # try:
-            #     x_val_unnorm = unnormalize_cifar10(x_val_normed)
-            # except:
-            #     x_val_unnorm = unnormalize_femnist(x_val_normed)
-            x_val_unnorm = unnormalize_adv(x_val_normed, self.dataset_name)
+            x_val_unnorm = unnormalize_adv(x_val_normed, self.dataset_name).detach().cpu()
             
             if self.unlearning_flag:
                 y_amax = y_amax_collect[i]
@@ -659,9 +662,15 @@ class Adv_Client(Client):
             else:
                 self.train_iterator.dataset.targets[idx] = y_val
             self.train_iterator.dataset.data[idx] = x_val_unnorm
+
+        print(f"  Memory allocated - inside 4 assign to train_iterator: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
+        
             
         self.unl_record += [y_record]
         self.train_loader = iter(self.train_iterator)
+
+        del x_adv, y_data, y_collect, y_amax_collect
+        torch.cuda.empty_cache()
         
         return
     
@@ -687,7 +696,7 @@ class Adv_Client(Client):
         y_data = self.adv_nn.dataloader.y_data[sample_indices]
 
         # Generate adversarial data using PGD attack
-        self.adv_nn.pgd_sub(self.atk_params, x_data.cuda(), y_data.cuda(),y_targets = adv_target_labels_specified)
+        self.adv_nn.pgd_sub(self.atk_params, x_data, y_data,y_targets = adv_target_labels_specified)
         x_adv = self.adv_nn.x_adv
 
         # Return the sampled indices, adversarial data, and the original labels
