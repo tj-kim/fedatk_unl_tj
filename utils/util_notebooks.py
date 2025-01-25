@@ -336,7 +336,7 @@ def initialize_logsadv(num_models):
         logs_adv += [adv_dict]
     return logs_adv
 
-def get_adv_acc(aggregator, model, batch_size = 500, eps = 4):
+def get_adv_acc(aggregator, model, batch_size = 500, eps = 4, step_size = 0.01, steps = 10):
     num_clients = len(aggregator.clients)
 
     # logs_adv = generate_logs_adv(num_models=num_clients)
@@ -363,9 +363,9 @@ def get_adv_acc(aggregator, model, batch_size = 500, eps = 4):
         t1 = Transferer(models_list = [model] * num_clients, dataloader=dataloader)
         t1.generate_victims(victim_idxs)
         t1.atk_params = PGD_Params()
-        t1.atk_params.set_params(batch_size=batch_size, iteration = 10, target = -1,
+        t1.atk_params.set_params(batch_size=batch_size, iteration = steps, target = -1,
                                 x_val_min = torch.min(data_x), x_val_max = torch.max(data_x),
-                                step_size = 0.05, step_norm = "inf", eps = eps, eps_norm = 2)
+                                step_size = step_size, step_norm = "inf", eps = eps, eps_norm = 2)
         t1.generate_advNN(c_id)
         t1.generate_xadv(atk_type="pgd")
         t1.send_to_victims(victim_idxs)
@@ -454,11 +454,12 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
         aggregation_op = aggregator.aggregation_op
         
     # Based on aggregation methods change weight scale
-    if aggregation_op == "median" or aggregation_op == "krum":
+    if aggregation_op in ['median', 'krum', 'median_sublayers']:# == "median" or aggregation_op == "krum":
         weight_scale = np.ones(weight_scale.shape)
 
     # Give adversarial clients boosted models and train regular clients 1 round
     benign_id = list(range(len(aggregator.clients)))
+    
     for a_id in adv_id:
         benign_id.remove(a_id)
         temp_atk_model = calc_atk_model(model_inject, model_global, keys, weight_scale[a_id], weight_scale_2)
@@ -545,7 +546,5 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
 
     aggregator.c_round += 1
 
-    # if aggregator.c_round % aggregator.log_freq == 0:
-    #     aggregator.write_logs()
     return 
 

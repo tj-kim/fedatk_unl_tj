@@ -623,10 +623,8 @@ class Adv_Client(Client):
     def assign_advdataset(self):
         # convert dataset to normed and replace specific datapoints
         
-        print(f"  Memory allocated - inside 1 init: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
         # Flush current used dataset with original
         self.train_iterator = deepcopy(self.og_dataloader)
-        print(f"  Memory allocated - inside 2 copy data loader: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
         
         # adversarial datasets loop, adjust normed and push 
         sample_id, x_adv, y_data = self.generate_adversarial_data() # , y_adv removed
@@ -662,8 +660,6 @@ class Adv_Client(Client):
             else:
                 self.train_iterator.dataset.targets[idx] = y_val
             self.train_iterator.dataset.data[idx] = x_val_unnorm
-
-        print(f"  Memory allocated - inside 4 assign to train_iterator: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
         
             
         self.unl_record += [y_record]

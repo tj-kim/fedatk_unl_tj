@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.tensorboard import SummaryWriter
 import numba 
+import gc
 
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -48,13 +49,13 @@ if __name__ == "__main__":
     os.chdir(parent_dir) # As we are in a folder
 
     dataset = "celeba"
-    exp_names = ['FedAvg']  #  ['FAT']
-    exp_method =  ['FedAvg']#   ['FedAvg_adv'] 
-    save_folder = 'weights/celeba/240311_small_architecture_moreconv/'
+    exp_names = ['FedAvg', 'FAT', 'FAT_R50'] 
+    exp_method =  ['FedAvg', 'FedAvg_adv', 'FedAvg_adv']
+    save_folder = 'weights/celeba/250123_icml25/'
+    num_tr_round = [100, 100, 50]
 
     exp_num_learners = 1
     exp_lr = 0.01
-    num_rounds = 100
     num_clients = 40
     FAT_start_round = 10
         
@@ -71,7 +72,7 @@ if __name__ == "__main__":
         args_.input_dimension = None
         args_.output_dimension = None
         args_.n_learners= exp_num_learners
-        args_.n_rounds = num_rounds
+        args_.n_rounds = num_tr_round[itt]
         args_.bz = 128
         args_.local_steps = 1
         args_.lr_lambda = 0
@@ -181,5 +182,6 @@ if __name__ == "__main__":
             aggregator.save_state(save_root)
             
         del args_, aggregator, clients
+        gc.collect()
         torch.cuda.empty_cache()
             

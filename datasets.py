@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, ConcatDataset, Subset
 
 import numpy as np
 from PIL import Image
+import gc
 
 
 class TabularDataset(Dataset):
@@ -713,55 +714,76 @@ def get_mnist():
 
 #     return celeba_data, celeba_targets
 
-def get_celeba():
-    celeba_path = os.path.join("data", "celeba", "raw_data")
-    assert os.path.isdir(celeba_path), "Download celeba dataset!!"
+# def get_celeba():
+#     celeba_path = os.path.join("data", "celeba", "raw_data")
+#     assert os.path.isdir(celeba_path), "Download celeba dataset!!"
     
-    transform =\
-                Compose([
-                    #Resize((45, 55)),
-                    ToTensor(),
-                    Normalize(
-                        (0.4914, 0.4822, 0.4465),
-                        (0.2023, 0.1994, 0.2010)
-                    )
-                ])
+#     transform =\
+#                 Compose([
+#                     #Resize((45, 55)),
+#                     ToTensor(),
+#                     Normalize(
+#                         (0.4914, 0.4822, 0.4465),
+#                         (0.2023, 0.1994, 0.2010)
+#                     )
+#                 ])
     
-    celeba_train =\
-        CelebA(
-            root= celeba_path,
-            split='train', download=False,
-            transform = transform,
-            target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35]) # Smiling, Male, Eyeglasses, Wearing Hat
-        )
+#     celeba_train =\
+#         CelebA(
+#             root= celeba_path,
+#             split='train', download=False,
+#             transform = transform,
+#             target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35]) # Smiling, Male, Eyeglasses, Wearing Hat
+#         )
     
-    train_idx = np.load('data/celeba/train_idx.npy', allow_pickle = True)
-    test_idx = np.load('data/celeba/test_idx.npy', allow_pickle = True)
+#     train_idx = np.load('data/celeba/train_idx.npy', allow_pickle = True)
+#     test_idx = np.load('data/celeba/test_idx.npy', allow_pickle = True)
 
-    celeba_test =\
-        CelebA(
-            root=celeba_path,
-            split='test',
-            download=False,
-            transform = transform,
-            target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35])
-    )
+#     celeba_test =\
+#         CelebA(
+#             root=celeba_path,
+#             split='test',
+#             download=False,
+#             transform = transform,
+#             target_transform=lambda x: transform_target(x, required_labels = [31, 20, 15, 35])
+#     )
     
-    celeba_train = Subset(celeba_train, train_idx)
-    celeba_test = Subset(celeba_test, test_idx)
+#     celeba_train = Subset(celeba_train, train_idx)
+#     celeba_test = Subset(celeba_test, test_idx)
     
-    celeba_data_X = []
-    celeba_data_y = []
+#     celeba_data_X = []
+#     celeba_data_y = []
     
-    for idx, data in enumerate(celeba_train):
-        celeba_data_X.append(data[0])
-        celeba_data_y.append(data[1])
+#     for idx, data in enumerate(celeba_train):
+#         celeba_data_X.append(data[0])
+#         celeba_data_y.append(data[1])
     
-    for idx, data in enumerate(celeba_test):
-        celeba_data_X.append(data[0])
-        celeba_data_y.append(data[1])
+#     for idx, data in enumerate(celeba_test):
+#         celeba_data_X.append(data[0])
+#         celeba_data_y.append(data[1])
         
-    return torch.stack(celeba_data_X), torch.Tensor(celeba_data_y)
+#     return torch.stack(celeba_data_X), torch.Tensor(celeba_data_y)
+
+def get_celeba():
+    # Load and combine all batches
+    print("get_celeba - Combining train batches... float16 version")
+    x_train, y_train = load_numpy_batches("celeba_pickle/train_batches")
+    x_train_tensor = torch.from_numpy(x_train)
+    y_train_tensor = torch.from_numpy(y_train)
+
+    print("get_celeba -Combining test batches... float16 version")
+    x_test, y_test = load_numpy_batches("celeba_pickle/test_batches")
+
+    # Convert to PyTorch tensors
+    x = torch.from_numpy(np.concatenate([x_train, x_test], axis=0))
+    y = torch.from_numpy(np.concatenate([y_train, y_test], axis=0))
+
+    del x_train, y_train, x_test, y_test
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+    return x, y
 
 # Celeba tool
 def transform_target(target, required_labels=[31]):
@@ -769,3 +791,14 @@ def transform_target(target, required_labels=[31]):
     for label in required_labels:
         target_str += str(int(target[label]))
     return int(target_str, 2)
+
+def load_numpy_batches(file_dir):
+    # Load all batches from the directory and concatenate them
+    data_list, label_list = [], []
+    for file_name in sorted(os.listdir(file_dir)):  # Sort to maintain batch order
+        file_path = os.path.join(file_dir, file_name)
+        with open(file_path, "rb") as f:
+            data, labels = pickle.load(f)
+            data_list.append(data)
+            label_list.append(labels)
+    return np.concatenate(data_list, axis=0), np.concatenate(label_list, axis=0)

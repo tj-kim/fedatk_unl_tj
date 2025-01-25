@@ -129,6 +129,9 @@ class CelebaCNN(nn.Module):
         self.output = nn.Linear(2048, num_classes)
 
     def forward(self, x):
+        if x.dtype != torch.float32:
+            x = x.float()
+
         x = self.pool(F.relu(self.conv1_bn(self.conv1(x))))  # Apply batch normalization after the first convolutional layer
         x = self.pool(F.relu(self.conv2_bn(self.conv2(x))))  # Apply batch normalization after the second convolutional layer
         x = self.pool(F.relu(self.conv3_bn(self.conv3(x))))  # Apply batch normalization after the third convolutional layer
