@@ -93,8 +93,8 @@ def get_learner(
     elif name == "celeba":
         criterion = nn.CrossEntropyLoss(reduction="none").to(device)
         metric = accuracy
-        # model = get_mobilenet(n_classes=16).to(device)
-        model = getCelebaCNN(n_classes=16).to(device)
+        model = get_mobilenet(n_classes=16).to(device)
+        # model = getCelebaCNN(n_classes=16).to(device)
         is_binary_classification = False
     elif name == "fakenewsnet":
         # criterion = nn.BCEWithLogitsLoss(reduction="none").to(device)
@@ -340,6 +340,7 @@ def get_client(
         logger,
         local_steps,
         tune_locally,
+        dataset_name = None
 ):
     """
 
@@ -394,7 +395,8 @@ def get_client(
             test_iterator=test_iterator,
             logger=logger,
             local_steps=local_steps,
-            tune_locally=tune_locally
+            tune_locally=tune_locally,
+            dataset_name=dataset_name
         )
     elif client_type == "normal_adv":
         return Adv_Client(
@@ -404,7 +406,8 @@ def get_client(
             test_iterator=test_iterator,
             logger=logger,
             local_steps=local_steps,
-            tune_locally=tune_locally
+            tune_locally=tune_locally, 
+            dataset_name=dataset_name
         )
     elif client_type == 'FedEM_dverge':
         return Adv_MixtureClient_DVERGE(

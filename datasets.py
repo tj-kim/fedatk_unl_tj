@@ -182,7 +182,7 @@ class SubCIFAR10(Dataset):
                         (0.2023, 0.1994, 0.2010)
                     )
                 ])
-
+ 
         if cifar10_data is None or cifar10_targets is None:
             self.data, self.targets = get_cifar10()
         else:

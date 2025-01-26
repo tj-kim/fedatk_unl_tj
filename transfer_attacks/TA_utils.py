@@ -107,7 +107,7 @@ def dummy_aggregator(args_, num_user=80):
         args_,
         root_path=os.path.join(data_dir, "train"),
         logs_root=os.path.join(logs_root, "train"),
-        client_limit = num_user
+        client_limit = num_user, 
     )
 
     clients = clients_temp[:num_user]

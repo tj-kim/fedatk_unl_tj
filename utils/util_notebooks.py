@@ -404,36 +404,39 @@ def pull_model_from_agg(aggregator):
 
 # Calculate uploaded model and download to attacker clients in aggregator
 # Current version working under the assumption of close to convergence (no benign client pushback)
-def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
-    with torch.no_grad():
-        atk_model = copy.deepcopy(model_global)
-        inject_state_dict = model_inject.state_dict(keep_vars=False)
-        global_state_dict = model_global.state_dict(keep_vars=False)
-        return_state_dict = atk_model.state_dict(keep_vars=False)
-        total_weight = weight_scale * weight_scale_2
-
-        for key in keys:
-            diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
-            return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
-
-        atk_model.load_state_dict(return_state_dict)
-        return atk_model
-
 # def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
-#     inject_state_dict = model_inject.state_dict(keep_vars=False)  # No gradients needed
-#     global_state_dict = model_global.state_dict(keep_vars=False)
-#     atk_state_dict = {}
+#     with torch.no_grad():
+#         # atk_model = copy.deepcopy(model_global)
+#         atk_model = copy.deepcopy(model_inject)
+#         inject_state_dict = model_inject.state_dict(keep_vars=False)
+#         global_state_dict = model_global.state_dict(keep_vars=False)
+#         return_state_dict = atk_model.state_dict(keep_vars=False)
+#         total_weight = weight_scale * weight_scale_2
 
-#     total_weight = weight_scale * weight_scale_2
+#         for key in keys:
+#             diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
+#             return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
 
-#     for key in keys:
-#         diff = inject_state_dict[key] - global_state_dict[key]
-#         atk_state_dict[key] = total_weight * diff + global_state_dict[key]
+#         atk_model.load_state_dict(return_state_dict)
+#         return atk_model
 
-#     # Create a new model and load updated state_dict
-#     atk_model = copy.deepcopy(model_global)
-#     atk_model.load_state_dict(atk_state_dict)
-#     return atk_model
+def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
+
+    atk_model = copy.deepcopy(model_inject)
+    inject_state_dict = model_inject.state_dict(keep_vars=False)
+    global_state_dict = model_global.state_dict(keep_vars=False)
+    return_state_dict = atk_model.state_dict(keep_vars=False)
+    total_weight = weight_scale * weight_scale_2
+
+    # for key in keys:
+    for key in inject_state_dict.keys():
+        # print(key, "total")
+        diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
+        return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
+
+    atk_model.load_state_dict(return_state_dict)
+
+    return atk_model
 
 # Clone data from attack model to client model
 def clone_model_weights(model_source, model_target, keys):
@@ -450,29 +453,35 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
     weight_scale = 1/aggregator.clients_weights
     model_global = aggregator.global_learners_ensemble[0].model
 
-    if aggregation_op == None:
-        aggregation_op = aggregator.aggregation_op
+    # if aggregation_op == None:
+    #     aggregation_op = aggregator.aggregation_op
         
     # Based on aggregation methods change weight scale
     if aggregation_op in ['median', 'krum', 'median_sublayers']:# == "median" or aggregation_op == "krum":
         weight_scale = np.ones(weight_scale.shape)
 
+    if aggregation_op in ['trimmed_mean']: # simple averaging takes place instead of weighted
+        N_removed = int(tm_beta*len(aggregator.clients))
+        weight_scale = np.ones(len(aggregator.clients)) # * (len(aggregator.clients)-N_removed*2)
+        print("trimmed mean, N removed: ", N_removed)
+        print("weight scale: \n", weight_scale)
+
     # Give adversarial clients boosted models and train regular clients 1 round
     benign_id = list(range(len(aggregator.clients)))
-    
+
     for a_id in adv_id:
         benign_id.remove(a_id)
         temp_atk_model = calc_atk_model(model_inject, model_global, keys, weight_scale[a_id], weight_scale_2)
         aggregator.clients[a_id].learners_ensemble[0].model.cpu()
         del aggregator.clients[a_id].learners_ensemble[0].model
-        aggregator.clients[a_id].learners_ensemble[0].model = temp_atk_model
+        aggregator.clients[a_id].learners_ensemble[0].model = temp_atk_model.cuda()
         del temp_atk_model
         gc.collect()
         torch.cuda.empty_cache()
 
-
     for c_id in benign_id:
         aggregator.clients[c_id].step()
+
 
     # Aggregate model and download
     for learner_id, learner in enumerate(aggregator.global_learners_ensemble):

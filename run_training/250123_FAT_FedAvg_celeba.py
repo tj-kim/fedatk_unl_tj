@@ -49,10 +49,10 @@ if __name__ == "__main__":
     os.chdir(parent_dir) # As we are in a folder
 
     dataset = "celeba"
-    exp_names = ['FedAvg', 'FAT', 'FAT_R50'] 
-    exp_method =  ['FedAvg', 'FedAvg_adv', 'FedAvg_adv']
-    save_folder = 'weights/celeba/250123_icml25/'
-    num_tr_round = [100, 100, 50]
+    exp_names = ['FAT_R50']# ['FedAvg', 'FAT', 'FAT_R50'] 
+    exp_method = ['FedAvg_adv'] #  [ 'FedAvg','FedAvg_adv', 'FedAvg_adv']
+    save_folder = 'weights/celeba/250123_icml25_mobilenet/'
+    num_tr_round = [50] # [100, 100, 50]
 
     exp_num_learners = 1
     exp_lr = 0.01
@@ -61,7 +61,7 @@ if __name__ == "__main__":
         
     for itt in range(len(exp_names)):
         
-        print("running trial:", itt)
+        print("running trial:", itt + 1, ' of ', len(exp_names))
         
         # Manually set argument parameters
         args_ = Args()
