@@ -255,9 +255,12 @@ def byzantine_robust_aggregate_tm(
             N_removed = int(beta*len(learners))
             if average_params:
                 sorted_params, indices = torch.sort(torch.stack(param_val[key], dim=0), dim=0)
-                target_state_dict[key].data = torch.mean(sorted_params[N_removed:-N_removed], dim=0)
-                removed_indices = torch.cat((indices[:N_removed], indices[-N_removed:]), dim=0)
-                sort_indices.append((key, removed_indices))
+                if N_removed == 0:
+                    target_state_dict[key].data = torch.mean(sorted_params, dim=0)
+                else:
+                    target_state_dict[key].data = torch.mean(sorted_params[N_removed:-N_removed], dim=0)
+                    removed_indices = torch.cat((indices[:N_removed], indices[-N_removed:]), dim=0)
+                    sort_indices.append((key, removed_indices))
             
             if average_gradients:
                 sorted_grads, _ = torch.sort(torch.stack(grad_val[key], dim=0), dim=0)

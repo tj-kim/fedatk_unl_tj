@@ -10,6 +10,7 @@ import numpy as np
 import copy
 import torch
 import torch.nn.functional as F
+import re
 # setting = 'FedAvg'
 
 def set_args(setting, num_user, experiment = "cifar10"):
@@ -726,3 +727,348 @@ def compare_layer_outputs_with_cosine_similarity(model1, model2, input_data, thr
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+
+def compare_top_level_outputs_with_cosine_similarity(model1, model2, input_data, threshold=0.95):
+    """
+    Compare outputs of top-level submodules of two models for a given input using cosine similarity.
+
+    Args:
+        model1: First model (e.g., reverse_model).
+        model2: Second model (e.g., model_Fedavg).
+        input_data: Input data in torch.Tensor form.
+        threshold: Threshold for cosine similarity to flag significant differences.
+
+    Returns:
+        Tuple containing submodule names, mean cosine similarities, and standard deviations for each submodule.
+    """
+    # Ensure models are in evaluation mode
+    model1.eval()
+    model2.eval()
+
+    # Hook to capture intermediate outputs
+    outputs1 = {}
+    outputs2 = {}
+
+    def hook_fn(outputs_dict, name):
+        def hook(module, input, output):
+            outputs_dict[name] = output.clone().detach().flatten(1)  # Flatten to 2D
+        return hook
+
+    # Register hooks for both models
+    hooks1 = []
+    hooks2 = []
+
+    # Regular expression to match top-level submodules
+    top_level_pattern = re.compile(r"^(features\.\d+|classifier\.\d+)$")
+
+    try:
+        for name, module in model1.named_modules():
+            if top_level_pattern.match(name):
+                hooks1.append(module.register_forward_hook(hook_fn(outputs1, name)))
+
+        for name, module in model2.named_modules():
+            if top_level_pattern.match(name):
+                hooks2.append(module.register_forward_hook(hook_fn(outputs2, name)))
+
+        # Push input through both models
+        with torch.no_grad():
+            model1(input_data)
+            model2(input_data)
+
+        # Compare layer-by-layer outputs
+        print(f"{'Submodule Name':<30} {'Mean Cosine Similarity':>20} {'Std Dev':>15}")
+        print("=" * 65)
+
+        submodule_names = []
+        mean_cosine_similarities = []
+        std_cosine_similarities = []
+
+        for name in outputs1.keys():
+            if name in outputs2:
+                output1 = outputs1[name]
+                output2 = outputs2[name]
+
+                # Compute cosine similarity for each input
+                cosine_sim = F.cosine_similarity(output1, output2, dim=1)
+                mean_cosine_sim = cosine_sim.mean().item()
+                std_cosine_sim = cosine_sim.std().item()
+
+                submodule_names.append(name)
+                mean_cosine_similarities.append(mean_cosine_sim)
+                std_cosine_similarities.append(std_cosine_sim)
+
+                # Print results
+                flag = "!!!" if mean_cosine_sim < threshold else ""
+                print(f"{name:<30} {mean_cosine_sim:>20.8f} {std_cosine_sim:>15.8f} {flag}")
+
+    finally:
+        # Clean up hooks
+        for hook in hooks1:
+            hook.remove()
+        for hook in hooks2:
+            hook.remove()
+
+    return submodule_names, mean_cosine_similarities, std_cosine_similarities
+
+
+def compare_intermediate_outputs_with_cosine_similarity(model1, model2, input_data, threshold=0.95):
+    """
+    Compare intermediate inputs and outputs of two models for a given input using cosine similarity.
+
+    Args:
+        model1: First model (e.g., reverse_model).
+        model2: Second model (e.g., model_Fedavg).
+        input_data: Input data in torch.Tensor form.
+        threshold: Threshold for cosine similarity to flag significant differences.
+
+    Returns:
+        Submodule names, mean cosine similarities, and standard deviations for each layer.
+    """
+    model1.eval()
+    model2.eval()
+
+    # Dictionaries to store intermediate inputs and outputs
+    inputs1, outputs1 = {}, {}
+    inputs2, outputs2 = {}, {}
+
+    def hook_fn(inputs_dict, outputs_dict, name):
+        def hook(module, input, output):
+            inputs_dict[name] = input[0].clone().detach()  # input is a tuple, take the first element
+            outputs_dict[name] = output.clone().detach()  # store the output
+        return hook
+
+    hooks1, hooks2 = [], []
+    top_level_pattern = re.compile(r"^(features\.\d+|classifier\.\d+)$")
+
+    try:
+        # Register hooks for both models
+        for name, module in model1.named_modules():
+            if top_level_pattern.match(name):
+                hooks1.append(module.register_forward_hook(hook_fn(inputs1, outputs1, name)))
+
+        for name, module in model2.named_modules():
+            if top_level_pattern.match(name):
+                hooks2.append(module.register_forward_hook(hook_fn(inputs2, outputs2, name)))
+
+        # Push input through model1
+        with torch.no_grad():
+            model1(input_data)
+
+        # Build outputs for model2 by feeding inputs through corresponding layers
+        for name, output1 in outputs1.items():
+            input2 = inputs1[name]
+            for submodule_name, submodule in model2.named_modules():
+                if submodule_name == name:
+                    output2 = submodule(input2)
+                    outputs2[name] = output2.clone().detach()
+                    break
+
+        # Calculate cosine similarity for each layer and compute per-input statistics
+        submodule_names = list(outputs1.keys())
+        mean_cosine_similarities = []
+        std_cosine_similarities = []
+
+        print(f"{'Submodule Name':<30} {'Mean Cosine Similarity':>20} {'Std Dev':>15}")
+        print("=" * 65)
+
+        for name in submodule_names:
+            output1 = outputs1[name]
+            output2 = outputs2.get(name, torch.tensor([]))  # Avoid empty tensor if not found
+
+            # Compute cosine similarity for each input
+            cosine_sim = F.cosine_similarity(output1.flatten(1), output2.flatten(1), dim=1)
+            mean_cosine_sim = cosine_sim.mean().item()
+            std_cosine_sim = cosine_sim.std().item()
+
+            mean_cosine_similarities.append(mean_cosine_sim)
+            std_cosine_similarities.append(std_cosine_sim)
+
+            # Print results
+            flag = "!!!" if mean_cosine_sim < threshold else ""
+            print(f"{name:<30} {mean_cosine_sim:>20.8f} {std_cosine_sim:>15.8f} {flag}")
+
+        # Return submodule names, mean cosine similarities, and standard deviations
+        return submodule_names, mean_cosine_similarities, std_cosine_similarities
+
+    finally:
+        # Clean up hooks
+        for hook in hooks1:
+            hook.remove()
+        for hook in hooks2:
+            hook.remove()
+
+
+
+def compare_top_level_outputs_with_cosine_similarity_fnn(model1, model2, input_data, threshold=0.95):
+    """
+    Compare outputs of specific layers of two models for a given input using cosine similarity.
+
+    Args:
+        model1: First model.
+        model2: Second model.
+        input_data: Input data in torch.Tensor form.
+        threshold: Threshold for cosine similarity to flag significant differences.
+
+    Returns:
+        Tuple containing submodule names, mean cosine similarities per layer, and standard deviations per layer.
+    """
+    # Ensure models are in evaluation mode
+    model1.eval()
+    model2.eval()
+
+    # Hook to capture intermediate outputs
+    outputs1 = {}
+    outputs2 = {}
+
+    def hook_fn(outputs_dict, name):
+        def hook(module, input, output):
+            outputs_dict[name] = output.clone().detach().flatten(1)  # Flatten to 2D
+        return hook
+
+    # Register hooks for both models
+    hooks1 = []
+    hooks2 = []
+
+    # Pattern to match specific layers
+    top_level_pattern = re.compile(r"^(conv1|conv2|conv3|fc1|fc2)$")
+
+    try:
+        for name, module in model1.named_modules():
+            if top_level_pattern.match(name):
+                hooks1.append(module.register_forward_hook(hook_fn(outputs1, name)))
+
+        for name, module in model2.named_modules():
+            if top_level_pattern.match(name):
+                hooks2.append(module.register_forward_hook(hook_fn(outputs2, name)))
+
+        # Push input through both models
+        with torch.no_grad():
+            model1(input_data)
+            model2(input_data)
+
+        # Compare layer-by-layer outputs
+        print(f"{'Submodule Name':<30} {'Mean Cosine Similarity':>20} {'Std Dev':>15}")
+        print("=" * 65)
+
+        submodule_names = []
+        cosine_similarities_mean = []
+        cosine_similarities_std = []
+
+        for name in outputs1.keys():
+            if name in outputs2:
+                output1 = outputs1[name]
+                output2 = outputs2[name]
+
+                # Compute cosine similarity for each input
+                cosine_sim = F.cosine_similarity(output1, output2, dim=1)
+
+                # Compute mean and std deviation
+                cosine_sim_mean = cosine_sim.mean().item()
+                cosine_sim_std = cosine_sim.std().item()
+
+                submodule_names.append(name)
+                cosine_similarities_mean.append(cosine_sim_mean)
+                cosine_similarities_std.append(cosine_sim_std)
+
+                # Print results
+                flag = "!!!" if cosine_sim_mean < threshold else ""
+                print(f"{name:<30} {cosine_sim_mean:>20.8f} {cosine_sim_std:>15.8f} {flag}")
+
+    finally:
+        # Clean up hooks
+        for hook in hooks1:
+            hook.remove()
+        for hook in hooks2:
+            hook.remove()
+
+    return submodule_names, cosine_similarities_mean, cosine_similarities_std
+
+
+def compare_intermediate_outputs_with_cosine_similarity_fnn(model1, model2, input_data, threshold=0.95):
+    """
+    Compare intermediate inputs and outputs of two models for a given input using cosine similarity.
+    
+    Args:
+        model1: First model.
+        model2: Second model.
+        input_data: Input data in torch.Tensor form.
+        threshold: Threshold for cosine similarity to flag significant differences.
+
+    Returns:
+        Submodule names, cosine similarities (mean across input data), and standard deviations (across input data).
+    """
+    model1.eval()
+    model2.eval()
+
+    # Dictionaries to store intermediate inputs and outputs
+    inputs1, outputs1 = {}, {}
+    inputs2, outputs2 = {}, {}
+
+    def hook_fn(inputs_dict, outputs_dict, name):
+        def hook(module, input, output):
+            inputs_dict[name] = input[0].clone().detach()  # input is a tuple, take the first element
+            outputs_dict[name] = output.clone().detach()  # store the output
+        return hook
+
+    hooks1, hooks2 = [], []
+    
+    # Pattern to match specific layers
+    top_level_pattern = re.compile(r"^(conv1|conv2|conv3|fc1|fc2)$")
+
+    try:
+        # Register hooks for both models
+        for name, module in model1.named_modules():
+            if top_level_pattern.match(name):
+                hooks1.append(module.register_forward_hook(hook_fn(inputs1, outputs1, name)))
+
+        for name, module in model2.named_modules():
+            if top_level_pattern.match(name):
+                hooks2.append(module.register_forward_hook(hook_fn(inputs2, outputs2, name)))
+
+        # Push input through model1
+        with torch.no_grad():
+            model1(input_data)
+
+        # Build outputs for model2 by feeding inputs through corresponding layers
+        for name, output1 in outputs1.items():
+            input2 = inputs1[name]
+            for submodule_name, submodule in model2.named_modules():
+                if submodule_name == name:
+                    output2 = submodule(input2)
+                    outputs2[name] = output2.clone().detach()
+                    break
+
+        # Calculate cosine similarity and standard deviation across input data for each layer
+        submodule_names = list(outputs1.keys())
+        cosine_similarities_mean = []
+        cosine_similarities_std = []
+
+        for name in submodule_names:
+            output1 = outputs1[name]
+            output2 = outputs2.get(name, torch.tensor([]))  # Avoid empty tensor if not found
+
+            # Compute cosine similarity across input data
+            cosine_sim = F.cosine_similarity(output1.flatten(1), output2.flatten(1), dim=1)  # Per input data
+            cosine_sim_mean = cosine_sim.mean().item()
+            cosine_sim_std = cosine_sim.std().item()
+
+            cosine_similarities_mean.append(cosine_sim_mean)
+            cosine_similarities_std.append(cosine_sim_std)
+
+        # Print results for each layer/module
+        print(f"{'Submodule Name':<30} {'Mean Cosine Similarity':>20} {'Std Dev':>15}")
+        print("=" * 65)
+        for name, cosine_mean, cosine_std in zip(submodule_names, cosine_similarities_mean, cosine_similarities_std):
+            flag = "!!!" if cosine_mean < threshold else ""
+            print(f"{name:<30} {cosine_mean:>20.8f} {cosine_std:>15.8f} {flag}")
+
+        # Return submodule names, mean cosine similarities, and standard deviations
+        return submodule_names, cosine_similarities_mean, cosine_similarities_std
+
+    finally:
+        # Clean up hooks
+        for hook in hooks1:
+            hook.remove()
+        for hook in hooks2:
+            hook.remove()

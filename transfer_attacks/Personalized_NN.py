@@ -243,7 +243,8 @@ class Adv_NN(Personalized_NN):
         # Check if CUDA is available and move tensors to GPU
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.x_orig = self.x_orig.to(device)
-        self.y_orig = self.y_orig.to(device)
+        # self.y_orig = self.y_orig.to(device)
+        self.y_orig = y_in.type(torch.LongTensor).cuda()
 
         if y_targets is not None:
             target = 1  # just setting it to be above -1 check
