@@ -9,7 +9,7 @@ from utils.torch_utils import *
 import numpy as np
 import copy
 import torch
-
+import torch.nn.functional as F
 # setting = 'FedAvg'
 
 def set_args(setting, num_user, experiment = "cifar10"):
@@ -420,6 +420,55 @@ def pull_model_from_agg(aggregator):
 #         atk_model.load_state_dict(return_state_dict)
 #         return atk_model
 
+def fix_model_stability(aggregator, stable_model):
+
+    exp_name = aggregator.clients[0].dataset_name
+
+    if exp_name == 'fakenewsnet':
+        return
+    else:
+        new_model = copy_layer_values(stable_model, aggregator.global_learners_ensemble[0].model, 'features.17.conv.1.1.running_var')
+        aggregator.global_learners_ensemble[0].model = new_model
+
+    return
+
+
+def copy_layer_values(source_model, target_model, key_to_copy):
+    """
+    Copies values of a specific layer (key) from the source model to the target model
+    and returns a new model with the updated state_dict.
+    
+    Args:
+        source_model: The model to copy values from.
+        target_model: The model to copy values to.
+        key_to_copy: The key in the state_dict specifying the layer to copy.
+    
+    Returns:
+        new_model: A new model with the updated state_dict.
+    """
+    # Deep copy the target model's state_dict to avoid modifying the original
+    new_state_dict = copy.deepcopy(target_model.state_dict())
+    
+    # Ensure the key exists in both models' state_dicts
+    if key_to_copy in source_model.state_dict() and key_to_copy in new_state_dict:
+        # Copy the value from source_model to target_model's state_dict
+        new_state_dict[key_to_copy] = source_model.state_dict()[key_to_copy]
+        print(f"Successfully copied values of '{key_to_copy}' from source_model to target_model.")
+    else:
+        raise KeyError(f"Key '{key_to_copy}' not found in one or both models.")
+    
+    # Create a new model instance and load the updated state_dict
+    new_model = copy.deepcopy(target_model)  # Clone the structure of the target model
+    new_model.load_state_dict(new_state_dict)
+    
+    # Verify the values were copied correctly
+    if torch.equal(new_model.state_dict()[key_to_copy], source_model.state_dict()[key_to_copy]):
+        print(f"Values of '{key_to_copy}' successfully updated in the new model.")
+    else:
+        print(f"Failed to update values of '{key_to_copy}' in the new model.")
+    
+    return new_model
+
 def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
 
     atk_model = copy.deepcopy(model_inject)
@@ -428,8 +477,8 @@ def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_
     return_state_dict = atk_model.state_dict(keep_vars=False)
     total_weight = weight_scale * weight_scale_2
 
-    # for key in keys:
-    for key in inject_state_dict.keys():
+    for key in keys:
+    # for key in inject_state_dict.keys():
         # print(key, "total")
         diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
         return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
@@ -437,6 +486,35 @@ def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_
     atk_model.load_state_dict(return_state_dict)
 
     return atk_model
+
+def undo_calc_atk_model(atk_model, model_global, keys, weight_scale, weight_scale_2):
+    """
+    Reverses the `calc_atk_model` process to find `model_inject` from `atk_model` and `model_global`.
+    
+    Args:
+        atk_model (torch.nn.Module): The attacker model generated from `calc_atk_model`.
+        model_global (torch.nn.Module): The global model used in `calc_atk_model`.
+        keys (list of str): The keys of the state dictionary to process.
+        weight_scale (float): Weight scale factor used in `calc_atk_model`.
+        weight_scale_2 (float): Second weight scale factor used in `calc_atk_model`.
+    
+    Returns:
+        torch.nn.Module: The reconstructed `model_inject`.
+    """
+    model_inject = copy.deepcopy(model_global)
+    atk_state_dict = atk_model.state_dict(keep_vars=False)
+    global_state_dict = model_global.state_dict(keep_vars=False)
+    inject_state_dict = model_inject.state_dict(keep_vars=False)
+    total_weight = weight_scale * weight_scale_2
+
+    for key in keys:
+        # Reverse the operation to calculate the original inject_state_dict
+        diff = (atk_state_dict[key].data.clone() - global_state_dict[key].data.clone()) / total_weight
+        inject_state_dict[key].data = diff + global_state_dict[key].data.clone()
+
+    model_inject.load_state_dict(inject_state_dict)
+
+    return model_inject
 
 # Clone data from attack model to client model
 def clone_model_weights(model_source, model_target, keys):
@@ -451,7 +529,7 @@ def clone_model_weights(model_source, model_target, keys):
 # Expand aggregator.mix() function
 def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=False, aggregation_op = None, tm_beta = 0.05, median_threshold = None):
     weight_scale = 1/aggregator.clients_weights
-    model_global = aggregator.global_learners_ensemble[0].model
+    model_global = copy.deepcopy(aggregator.global_learners_ensemble[0].model)
 
     # if aggregation_op == None:
     #     aggregation_op = aggregator.aggregation_op
@@ -462,7 +540,7 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
 
     if aggregation_op in ['trimmed_mean']: # simple averaging takes place instead of weighted
         N_removed = int(tm_beta*len(aggregator.clients))
-        weight_scale = np.ones(len(aggregator.clients)) # * (len(aggregator.clients)-N_removed*2)
+        weight_scale = np.ones(len(aggregator.clients))  * (len(aggregator.clients)-N_removed*2)
         print("trimmed mean, N removed: ", N_removed)
         print("weight scale: \n", weight_scale)
 
@@ -481,7 +559,6 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
 
     for c_id in benign_id:
         aggregator.clients[c_id].step()
-
 
     # Aggregate model and download
     for learner_id, learner in enumerate(aggregator.global_learners_ensemble):
@@ -549,6 +626,11 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
         else:
             raise NotImplementedError
 
+    # Batchnorm buggy in mobilenet v2
+    fix_model_stability(aggregator, model_global)
+    del model_global
+    gc.collect()
+    torch.cuda.empty_cache()
 
     # assign the updated model to all clients
     aggregator.update_clients()
@@ -557,3 +639,90 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
 
     return 
 
+def compare_layer_outputs_with_cosine_similarity(model1, model2, input_data, threshold=0.95):
+    """
+    Compare outputs of each layer of two models for a given input using cosine similarity.
+
+    Args:
+        model1: First model (e.g., reverse_model).
+        model2: Second model (e.g., model_Fedavg).
+        input_data: Input data in torch.Tensor form.
+        threshold: Threshold for cosine similarity to flag significant differences.
+
+    Returns:
+        None. Prints results and plots cosine similarity across layers.
+    """
+    # Ensure models are in evaluation mode
+    model1.eval()
+    model2.eval()
+
+    # Hook to capture intermediate outputs
+    outputs1 = {}
+    outputs2 = {}
+
+    def hook_fn1(name):
+        def hook(module, input, output):
+            outputs1[name] = output.clone().detach().flatten(1)  # Flatten to 2D
+        return hook
+
+    def hook_fn2(name):
+        def hook(module, input, output):
+            outputs2[name] = output.clone().detach().flatten(1)  # Flatten to 2D
+        return hook
+
+    # Register hooks for both models
+    hooks1 = []
+    hooks2 = []
+    for name, module in model1.named_modules():
+        hooks1.append(module.register_forward_hook(hook_fn1(name)))
+
+    for name, module in model2.named_modules():
+        hooks2.append(module.register_forward_hook(hook_fn2(name)))
+
+    # Push input through both models
+    with torch.no_grad():
+        model1(input_data)
+        model2(input_data)
+
+    # Compare layer-by-layer outputs
+    print(f"{'Layer Name':<50} {'Cosine Similarity':>20}")
+    print("=" * 70)
+
+    layer_names = []
+    cosine_similarities = []
+
+    model1_layers = list(model1.named_modules())
+
+    for name1, _ in model1_layers:
+        if name1 in outputs1 and name1 in outputs2:
+            output1 = outputs1[name1]
+            output2 = outputs2[name1]
+
+            # Compute cosine similarity
+            cosine_sim = F.cosine_similarity(output1, output2, dim=1).mean().item()
+            layer_names.append(name1)
+            cosine_similarities.append(cosine_sim)
+
+            # Highlight significant divergence
+            flag = "!!!" if cosine_sim < threshold else ""
+            print(f"{name1:<50} {cosine_sim:>20.8f} {flag}")
+
+    print(cosine_similarities)
+
+    # Clean up hooks
+    for hook in hooks1:
+        hook.remove()
+    for hook in hooks2:
+        hook.remove()
+
+    # Plot cosine similarity across layers
+    plt.figure(figsize=(30, 6))
+    plt.plot(layer_names[2:], cosine_similarities[2:], marker='o', label='Cosine Similarity')
+    plt.axhline(y=threshold, color='r', linestyle='--', label=f'Threshold = {threshold}')
+    plt.xticks(rotation=45, ha='right')
+    plt.xlabel('Layer Name')
+    plt.ylabel('Cosine Similarity')
+    plt.title('Cosine Similarity of Layer Outputs')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()

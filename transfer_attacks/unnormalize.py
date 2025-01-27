@@ -7,8 +7,9 @@ def unnormalize_adv(normed, dataset_name):
         return unnormalize_cifar10(normed)
     elif dataset_name == "femnist":
         return unnormalize_femnist(normed)
-    # elif dataset_name == "celeba":
-    #     return unnormalize_celeba(normed)
+    elif dataset_name == "celeba":
+        # return unnormalize_celeba(normed)
+        return normed
 
     return normed
 

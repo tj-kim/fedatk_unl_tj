@@ -57,6 +57,9 @@ class Personalized_NN(nn.Module):
         
         # if torch.cuda.is_available():
         #     x = x.cuda()
+
+        if not x.dtype == torch.float32:
+            x = x.to(dtype=torch.float32)  # Convert x to float32
         
         x = self.trained_network.forward(x)
         # x = x.cpu()
@@ -492,7 +495,7 @@ class Adv_NN(Personalized_NN):
         """
         Computes attack success metrics after xadv is generated
         """
-                
+        
         self.softmax_orig = self.forward(self.x_orig)
         self.output_orig = torch.argmax(self.softmax_orig,dim=1)
         self.softmax_adv = self.forward(self.x_adv)

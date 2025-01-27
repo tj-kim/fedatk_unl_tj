@@ -70,7 +70,8 @@ def init_clients(args_, root_path, logs_root, client_limit = None):
             test_iterator=test_iterator,
             logger=logger,
             local_steps=args_.local_steps,
-            tune_locally=args_.locally_tune_clients
+            tune_locally=args_.locally_tune_clients,
+            dataset_name=args_.experiment
         )
 
         clients_.append(client)
