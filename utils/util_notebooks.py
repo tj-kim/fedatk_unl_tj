@@ -403,24 +403,6 @@ def pull_model_from_agg(aggregator):
 
 
 
-# Calculate uploaded model and download to attacker clients in aggregator
-# Current version working under the assumption of close to convergence (no benign client pushback)
-# def calc_atk_model(model_inject, model_global, keys, weight_scale, weight_scale_2):
-#     with torch.no_grad():
-#         # atk_model = copy.deepcopy(model_global)
-#         atk_model = copy.deepcopy(model_inject)
-#         inject_state_dict = model_inject.state_dict(keep_vars=False)
-#         global_state_dict = model_global.state_dict(keep_vars=False)
-#         return_state_dict = atk_model.state_dict(keep_vars=False)
-#         total_weight = weight_scale * weight_scale_2
-
-#         for key in keys:
-#             diff = inject_state_dict[key].data.clone() - global_state_dict[key].data.clone()
-#             return_state_dict[key].data = total_weight * diff + global_state_dict[key].data.clone()
-
-#         atk_model.load_state_dict(return_state_dict)
-#         return atk_model
-
 def fix_model_stability(aggregator, stable_model):
 
     exp_name = aggregator.clients[0].dataset_name
@@ -532,11 +514,11 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
     weight_scale = 1/aggregator.clients_weights
     model_global = copy.deepcopy(aggregator.global_learners_ensemble[0].model)
 
-    # if aggregation_op == None:
-    #     aggregation_op = aggregator.aggregation_op
+    if aggregation_op == None:
+        aggregation_op = aggregator.aggregation_op
         
     # Based on aggregation methods change weight scale
-    if aggregation_op in ['median', 'krum', 'median_sublayers']:# == "median" or aggregation_op == "krum":
+    if aggregation_op in ['median', 'krum']:# == "median" or aggregation_op == "krum":
         weight_scale = np.ones(weight_scale.shape)
 
     if aggregation_op in ['trimmed_mean']: # simple averaging takes place instead of weighted
