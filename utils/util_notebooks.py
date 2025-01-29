@@ -518,7 +518,7 @@ def UNL_mix(aggregator, adv_id, model_inject, keys, weight_scale_2, dump_flag=Fa
         aggregation_op = aggregator.aggregation_op
         
     # Based on aggregation methods change weight scale
-    if aggregation_op in ['median', 'krum']:# == "median" or aggregation_op == "krum":
+    if aggregation_op in ['median', 'krum', 'median_sublayers']:# == "median" or aggregation_op == "krum":
         weight_scale = np.ones(weight_scale.shape)
 
     if aggregation_op in ['trimmed_mean']: # simple averaging takes place instead of weighted
