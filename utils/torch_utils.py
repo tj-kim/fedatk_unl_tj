@@ -519,6 +519,100 @@ def byzantine_robust_aggregate_krum(
         with open(dump_path, 'wb') as f:
             pickle.dump(sort_indices, f)
 
+def byzantine_robust_aggregate_median_sublayers(
+        learners,
+        target_learner,
+        median_layers = [],
+        beta = 0.15,
+        average_params=True,
+        average_gradients=False,
+        dump_path=None):
+    """
+    Compute the median or weighted average of learners' parameters based on a threshold and store in target_learner.
+
+    :param learners: List of Learner objects
+    :param target_learner: The global Learner to be updated
+    :param threshold: Number of layers to apply median aggregation; beyond this, apply weighted average
+    :param weights: Tensor of weights for weighted average (default is uniform)
+    :param dump_path: Path to dump sorted indices for debugging (optional)
+    """
+    from collections import defaultdict
+    import torch
+    import warnings
+    import pickle
+    
+    target_state_dict = target_learner.model.state_dict(keep_vars=True)
+    
+    param_val = defaultdict(list)
+    grad_val = defaultdict(list)
+
+    sort_indices = list()
+
+    for key in target_state_dict:
+
+        if target_state_dict[key].data.dtype == torch.float32:
+
+            if average_params:
+                target_state_dict[key].data.fill_(0.)
+
+            if average_gradients:
+                target_state_dict[key].grad = target_state_dict[key].data.clone()
+                target_state_dict[key].grad.data.fill_(0.)
+
+            for learner_id, learner in enumerate(learners):
+                state_dict = learner.model.state_dict(keep_vars=True)
+
+                if average_params:
+                    # target_state_dict[key].data += weights[learner_id] * state_dict[key].data.clone()
+                    param_val[key].append(state_dict[key].data.clone())
+
+                if average_gradients:
+                    if state_dict[key].grad is not None:
+                        # target_state_dict[key].grad += weights[learner_id] * state_dict[key].grad.clone()
+                        grad_val[key].append(state_dict[key].grad.clone())
+                    elif state_dict[key].requires_grad:
+                        warnings.warn(
+                            "trying to average_gradients before back propagation,"
+                            " you should set `average_gradients=False`."
+                        )
+
+            # Median Half
+            if any(short_key in key for short_key in median_layers):
+                # print("layer ", key, 'med agg')
+                if average_params:
+                    target_state_dict[key].data, indices = torch.median(torch.stack(param_val[key], dim=0), dim=0)
+                    sort_indices.append((key, indices))
+                if average_gradients:
+                    target_state_dict[key].grad, _ = torch.median(torch.stack(grad_val[key], dim=0), dim=0)
+
+            else: # TM Half - run trimmed mean on all other layers
+                # print("layer ", key, 'tm agg')
+                N_removed = int(beta*len(learners))
+                if average_params:
+                    sorted_params, indices = torch.sort(torch.stack(param_val[key], dim=0), dim=0)
+                    if N_removed == 0:
+                        target_state_dict[key].data = torch.mean(sorted_params, dim=0)
+                    else:
+                        target_state_dict[key].data = torch.mean(sorted_params[N_removed:-N_removed], dim=0)
+                        removed_indices = torch.cat((indices[:N_removed], indices[-N_removed:]), dim=0)
+                        sort_indices.append((key, removed_indices))
+                
+                if average_gradients:
+                    sorted_grads, _ = torch.sort(torch.stack(grad_val[key], dim=0), dim=0)
+                    target_state_dict[key].grad = torch.mean(sorted_grads[N_removed:-N_removed], dim=0)
+
+        else:
+            # tracked batches
+            target_state_dict[key].data.fill_(0)
+            for learner_id, learner in enumerate(learners):
+                state_dict = learner.model.state_dict()
+                target_state_dict[key].data += state_dict[key].data.clone()
+
+
+    # Optionally dump indices used for median sorting
+    if dump_path is not None:
+        with open(dump_path, 'wb') as f:
+            pickle.dump(sort_indices, f)
 
 def partial_average(learners, average_learner, alpha):
     """
