@@ -51,11 +51,14 @@ if __name__ == "__main__":
     iid_mode = [True, False, True, False]
     agg_op_list =  ["trimmed_mean", "trimmed_mean", "median", "median"]
     exp_method = ['FedAvg_adv','FedAvg_adv','FedAvg_adv','FedAvg_adv']
-    save_folder = 'weights/cifar100/240201_niid_test/'
+    save_folder = 'weights/cifar10/250123_icml25/'
     agg_tm_rate = 0.1
 
     exp_num_learners = 1
     exp_lr = 0.01
+    exp_name = 'cifar10'
+    num_rounds = 200
+    num_clients = 40
     
         
     for itt in range(len(exp_names)):
@@ -64,14 +67,14 @@ if __name__ == "__main__":
         
         # Manually set argument parameters
         args_ = Args()
-        args_.experiment = "cifar100"
+        args_.experiment = exp_name
         args_.method = exp_method[itt]
         args_.decentralized = False
         args_.sampling_rate = 1.0
         args_.input_dimension = None
         args_.output_dimension = None
         args_.n_learners= exp_num_learners
-        args_.n_rounds = 200
+        args_.n_rounds = num_rounds
         args_.bz = 128
         args_.local_steps = 1
         args_.lr_lambda = 0
@@ -92,8 +95,7 @@ if __name__ == "__main__":
 
         # Other Argument Parameters
         Q = 10 # update per round
-        G = 0.5
-        num_clients = 50
+        G = 0.4
         S = 0.05 # Threshold
         step_size = 0.01
         K = 10
@@ -116,7 +118,7 @@ if __name__ == "__main__":
             atk_params = PGD_Params()
             atk_params.set_params(batch_size=1, iteration = K,
                             target = -1, x_val_min = x_min, x_val_max = x_max,
-                            step_size = 0.05, step_norm = "inf", eps = eps, eps_norm = 2)
+                            step_size = 0.01, step_norm = "inf", eps = eps, eps_norm = 2)
 
         # Obtain the central controller decision making variables (static)
         num_h = args_.n_learners= 3
@@ -145,7 +147,7 @@ if __name__ == "__main__":
                         Fu = np.ones(num_clients) * G
                     else:
                         Fu = np.zeros(num_clients)
-                        Fu[0:20] = 1 # 15 for cifar 10 
+                        Fu[0:16] = 1 # 15 for cifar 10 
 
                     # Assign proportion and attack params
                     for i in range(len(clients)):
